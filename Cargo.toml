@@ -1,0 +1,46 @@
+[package]
+name = "sync_backend"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# password stuff
+argon2 = "0.3"
+rand_core = { version = "0.6", features = ["std"] }
+# errors
+color-eyre = "0.5"
+thiserror = "1"
+# webserver + async runtime
+actix-web = "4.0.0-beta.10"
+actix-rt = "2"
+# serialization
+serde = "1"
+serde_json = "1"
+# logging
+tracing = "0.1"
+tracing-subscriber = "0.3.0"
+tracing-actix-web = "0.5.0-beta.1"
+# JWT for app API authentication
+josekit = "0.7"
+# orm + sql
+[dependencies.ormx]
+version = "0.10"
+features = ["mysql"]
+
+[dependencies.sqlx]
+version = "0.5"
+features = [ "runtime-tokio-native-tls","mysql","migrate","chrono","uuid"]
+# uuid, used also by sqlx
+[dependencies.uuid]
+version = "^0.8.2"
+features = ["serde", "v4"]
+# chrono, also sqlx
+[dependencies.chrono]
+version = "^0.4"
+features = ["serde", "std"]
+# config
+[dependencies.config]
+version = "0.11"
+features = [ "toml","ini"]
