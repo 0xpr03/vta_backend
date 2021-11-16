@@ -34,12 +34,18 @@ jobs:
           default: true
           override: true
 
+      - name: Setup DB
+        env:
+            DATABASE_URL: mysql://user:password@localhost:${{ job.services.mariadb.ports[3306] }}/test
+        run: mysql 
+        # TODO: use cache, see https://github.com/launchbadge/sqlx/blob/master/.github/workflows/sqlx.yml
+
     #  - name: Test
     #    env:
-    #        DATABASE_URL: mysql://user:test@localhost:${{ job.services.mariadb.ports[3306] }}/test
+    #        DATABASE_URL: mysql://user:password@localhost:${{ job.services.mariadb.ports[3306] }}/test
     #    run: cargo test
 
       - name: Build
         env:
-            DATABASE_URL: mysql://user:test@localhost:${{ job.services.mariadb.ports[3306] }}/test
+            DATABASE_URL: mysql://user:password@localhost:${{ job.services.mariadb.ports[3306] }}/test
         run: cargo build

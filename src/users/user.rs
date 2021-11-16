@@ -39,7 +39,15 @@ pub struct UserKey{
 #[derive(Debug, Deserialize)]
 pub struct AccRegister {
     pub key: String,
+    pub keytype: KeyType,
     pub proof: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(non_camel_case_types)]
+pub enum KeyType {
+    RSA_PEM,
+    EC_PEM
 }
 
 #[derive(Deserialize)]
@@ -47,4 +55,10 @@ pub struct RegisterClaims {
     pub iss: Uuid,
     pub name: String,
     pub delete_after: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AccLogin {
+    pub iss: Uuid,
+    pub proof: String,
 }

@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS user_login
 CREATE TABLE IF NOT EXISTS verify_token
 (
     user_id BINARY(16) NOT NULL,
-    token VARCHAR(255) NOT NULL UNIQUE,
+    token VARCHAR(255) NOT NULL,
     created BIGINT UNSIGNED NOT NULL DEFAULT current_timestamp(),
     INDEX `user_token` (`user_id`,`token`),
     INDEX `created` (`created`),
