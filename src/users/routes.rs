@@ -54,8 +54,10 @@ async fn app_register(reg: web::Json<AccRegister>,state: AppState) -> StdResult<
 #[post("/api/v1/account/login")]
 async fn app_login(reg: web::Json<AccLogin>, state: AppState) -> StdResult<HttpResponse,AuthError> {
     info!("acc register request");
-
-
+    // server hat UUID
+    // login erfolgt mit signatur von UUID + zeit
+    // jedes gerät(client) hat eine UUID für synchroner schlüsse per gerät?
+    // ausser wir verschlüsseln mit gehemnis was nur wir kennen, dann ist das egal, brauchen aber einen Austausch des schlüssels
     
     Ok(HttpResponse::Accepted().finish())
 }

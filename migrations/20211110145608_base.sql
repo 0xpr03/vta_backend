@@ -167,3 +167,9 @@ CREATE TABLE IF NOT EXISTS deleted_user
     user BINARY(16) NOT NULL PRIMARY KEY,
     deleted TIMESTAMP NOT NULL DEFAULT current_timestamp()
 );
+
+CREATE TABLE IF NOT EXISTS settings
+(
+    `key` VARCHAR(127) NOT NULL PRIMARY KEY,
+    `value` VARCHAR(127) NOT NULL,
+);
