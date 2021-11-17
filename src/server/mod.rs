@@ -35,9 +35,9 @@ pub async fn load_setting(pool: &MySqlPool, key: &str) -> std::result::Result<Op
 
 pub async fn set_setting(pool: &MySqlPool, key: &str, value: &str, update: bool) -> std::result::Result<(),sqlx::Error> {
     let query = if update {
-        sqlx::query("INSERT INTO settings (`key`,`value`) (?,?) ON DUPLICATE KEY `value`=VALUES(`value`)")
+        sqlx::query("INSERT INTO settings (`key`,`value`) VALUES(?,?) ON DUPLICATE KEY `value`=VALUES(`value`)")
     } else {
-        sqlx::query("INSERT INTO settings (`key`,`value`) (?,?)")
+        sqlx::query("INSERT INTO settings (`key`,`value`) VALUES(?,?)")
     };
     query
         .bind(key)

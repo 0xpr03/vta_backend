@@ -1,10 +1,10 @@
-use actix_web::{HttpResponse, post, web};
+use actix_web::{HttpResponse, get, web};
 use time::OffsetDateTime;
 use tracing::{info, instrument};
 use crate::{server::ServerInfo, state::AppState};
 
 #[instrument]
-#[post("/api/v1/server/info")]
+#[get("/api/v1/server/info")]
 async fn server_info(state: AppState) -> HttpResponse {
     info!("acc register request");
     let info = ServerInfo {

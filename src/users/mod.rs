@@ -22,7 +22,7 @@ enum AuthError {
 
 fn jwt_err_into_response(error: &jsonwebtoken::errors::Error) -> HttpResponse {
     use jsonwebtoken::errors::ErrorKind::*;
-    HttpResponse::BadRequest().reason(match error.kind() {
+    HttpResponse::BadRequest().content_type("text/plain").body(match error.kind() {
         InvalidToken => "invalid JWT token",
         InvalidSignature => "invalid JWT signature",
         InvalidEcdsaKey => "ecdsa key invalid",
@@ -32,8 +32,9 @@ fn jwt_err_into_response(error: &jsonwebtoken::errors::Error) -> HttpResponse {
         InvalidKeyFormat => "invalid key format",
         InvalidIssuer => "iss invalid",
         InvalidAlgorithm => "key/decode algorithm mismatch",
+        InvalidAudience => "aud invalid",
         _ => "JWT invalid"
-    }).finish()
+    })
 }
 
 impl ResponseError for AuthError {

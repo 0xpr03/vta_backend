@@ -11,6 +11,7 @@ use tracing::*;
 use crate::state::AppState;
 
 use super::AuthError;
+use std::collections::HashSet;
 use std::result::Result as StdResult;
 use super::user::*;
 use super::dao::*;
@@ -22,7 +23,6 @@ pub fn init(cfg: &mut web::ServiceConfig) {
         .service(app_login);
 }
 
-
 /// App user register route.
 #[instrument]
 #[post("/api/v1/account/register")]
@@ -30,15 +30,29 @@ async fn app_register(reg: web::Json<AccRegister>,state: AppState) -> StdResult<
     trace!("acc register request");
     let reg = reg.into_inner();
 
+    let aud = HashSet::from([state.id.to_string()]);
+
     // FIX ME: loosing context here for tracing span
     let (reg_claims,auth_key) = task::spawn_blocking(move || -> StdResult<_,AuthError>  {
         // can't allow Algorithm::RS256,Algorithm::RS384,Algorithm::RS512 untill fixes
         // https://github.com/Keats/jsonwebtoken/issues/219
-        let algorithms = vec![Algorithm::ES256,Algorithm::ES384];
-        let validation = Validation { sub: Some(String::from("register")), leeway: 5, algorithms, ..Validation::default() };
+
+        let algo_ec = vec![Algorithm::ES256,Algorithm::ES384];
+        let mut validation = Validation {
+            aud: Some(aud),
+            sub: Some(String::from("register")),
+            leeway: 5,
+            algorithms: algo_ec,
+            ..Validation::default()
+        };
         let key = match reg.keytype {
-            KeyType::EC_PEM => DecodingKey::from_ec_pem(reg.key.as_bytes())?,
-            KeyType::RSA_PEM => DecodingKey::from_rsa_pem(reg.key.as_bytes())?,
+            KeyType::EC_PEM => {
+                DecodingKey::from_ec_pem(reg.key.as_bytes())?
+            },
+            KeyType::RSA_PEM => {
+                validation.algorithms = vec![Algorithm::RS256,Algorithm::RS384,Algorithm::RS512];
+                DecodingKey::from_rsa_pem(reg.key.as_bytes())?
+            },
         };
         let td = decode::<RegisterClaims>(&reg.proof, &key, &validation)?;
         Ok((td.claims,reg.key))
@@ -51,13 +65,14 @@ async fn app_register(reg: web::Json<AccRegister>,state: AppState) -> StdResult<
 
 /// App user login
 #[instrument]
-#[post("/api/v1/account/login")]
+#[post("/api/v1/account/login/key")]
 async fn app_login(reg: web::Json<AccLogin>, state: AppState) -> StdResult<HttpResponse,AuthError> {
     info!("acc register request");
     // server hat UUID
     // login erfolgt mit signatur von UUID + zeit
     // jedes gerät(client) hat eine UUID für synchroner schlüsse per gerät?
     // ausser wir verschlüsseln mit gehemnis was nur wir kennen, dann ist das egal, brauchen aber einen Austausch des schlüssels
+
     
     Ok(HttpResponse::Accepted().finish())
 }

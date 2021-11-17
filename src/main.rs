@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use color_eyre::eyre::Result;
-use tracing::{info, metadata::LevelFilter};
+use tracing::{error, info, metadata::LevelFilter};
 use tracing_actix_web::TracingLogger;
 use tracing_subscriber::FmtSubscriber;
 use sqlx::{MySqlPool, mysql::MySqlConnectOptions};
@@ -45,9 +45,18 @@ async fn main() -> Result<()>{
 
     let db_pool = MySqlPool::connect_with(options).await?;
     
-    sqlx::migrate!()
-    .run(&db_pool)
-    .await?;
+    let mut stm = db_pool.begin().await?;
+    match sqlx::migrate!()
+    .run(&mut stm)
+    .await {
+        Ok(_) => {stm.commit().await?;},
+        Err(e) => {
+            stm.rollback().await?;
+            error!(?e,"Migration failed");
+            return Err(e.into());
+        },
+    }
+
 
     let server_id = match server::load_setting(&db_pool,SERVER_ID).await? {
         Some(v) => Uuid::from_str(&v)?,
