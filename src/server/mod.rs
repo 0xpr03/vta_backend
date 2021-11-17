@@ -1,12 +1,11 @@
 use actix_web::{HttpResponse, ResponseError};
-use serde::de::DeserializeOwned;
-use sqlx::MySqlPool;
+use serde::Serialize;
+use sqlx::{MySqlPool, Row};
 use thiserror::Error;
 use tracing::trace;
+use uuid::Uuid;
 
 pub mod routes;
-
-type Result<T> = std::result::Result<T,CError>;
 
 #[derive(Error, Debug)]
 enum CError {
@@ -23,7 +22,7 @@ impl ResponseError for CError {
     }
 }
 
-pub async fn load_setting(pool: &MySqlPool, key: &str) -> std::result::Result<Option<String>,CError> {
+pub async fn load_setting(pool: &MySqlPool, key: &str) -> std::result::Result<Option<String>,sqlx::Error> {
     if let Some(row) = sqlx::query("SELECT `value` FROM settings WHERE `key` = ?")
         .bind(key)
         .fetch_optional(pool).await? {
@@ -34,14 +33,21 @@ pub async fn load_setting(pool: &MySqlPool, key: &str) -> std::result::Result<Op
     }
 }
 
-pub async fn set_setting(pool: &MySqlPool, key: &str, value: &str) -> std::result::Result<(),CError> {
-    // TODO: handle updates
-    if let Some(row) = sqlx::query("INSERT INTO settings (`key`,`value`) (?,?)")
-        .bind(key)
-        .fetch_optional(pool).await? {
-        let value: String = row.try_get("value")?;
-        Ok(Some(value))
+pub async fn set_setting(pool: &MySqlPool, key: &str, value: &str, update: bool) -> std::result::Result<(),sqlx::Error> {
+    let query = if update {
+        sqlx::query("INSERT INTO settings (`key`,`value`) (?,?) ON DUPLICATE KEY `value`=VALUES(`value`)")
     } else {
-        Ok(None)
-    }
+        sqlx::query("INSERT INTO settings (`key`,`value`) (?,?)")
+    };
+    query
+        .bind(key)
+        .bind(value)
+        .execute(pool).await?;
+    Ok(())
+}
+
+#[derive(Debug,Serialize)]
+struct ServerInfo {
+    time: i64,
+    id: Uuid,
 }

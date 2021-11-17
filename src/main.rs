@@ -1,4 +1,4 @@
-use std::convert::TryInto;
+use std::str::FromStr;
 
 use color_eyre::eyre::Result;
 use tracing::{info, metadata::LevelFilter};
@@ -42,18 +42,21 @@ async fn main() -> Result<()>{
     if let Some(pw) = config.database.password {
         options = options.password(&pw);
     }
+
     let db_pool = MySqlPool::connect_with(options).await?;
-    let server_id = match server::load_setting(&db_pool,SERVER_ID).await? {
-        Some(v) => v.try_into(),
-        None => {
-            let id = Uuid::new_v4();
-            server::set_setting(SERVER_ID,id).await?;
-            id
-        }
-    };
+    
     sqlx::migrate!()
     .run(&db_pool)
     .await?;
+
+    let server_id = match server::load_setting(&db_pool,SERVER_ID).await? {
+        Some(v) => Uuid::from_str(&v)?,
+        None => {
+            let id = Uuid::new_v4();
+            server::set_setting(&db_pool, SERVER_ID,&id.to_hyphenated_ref().to_string(),false).await?;
+            id
+        }
+    };
 
     let state = web::Data::new(state::State {
         sql: db_pool,
@@ -66,7 +69,7 @@ async fn main() -> Result<()>{
             .app_data(state.clone())
             .wrap(TracingLogger::default())
             .configure(users::routes::init) // init user routes
-            //.configure(api::app::init) // init app api routes
+            .configure(server::routes::init) // init app api routes
     })
     .bind((config.listen_ip.as_ref(), config.listen_port))?;
 
