@@ -1,11 +1,12 @@
 use std::str::FromStr;
 
+use actix_identity::{CookieIdentityPolicy, IdentityService};
 use color_eyre::eyre::Result;
 use tracing::{error, info, metadata::LevelFilter};
 use tracing_actix_web::TracingLogger;
 use tracing_subscriber::FmtSubscriber;
 use sqlx::{MySqlPool, mysql::MySqlConnectOptions};
-use actix_web::{web, App, HttpServer};
+use actix_web::{App, HttpServer, cookie::SameSite, web};
 use uuid::Uuid;
 
 mod config;
@@ -16,6 +17,7 @@ mod server;
 pub type Pool = MySqlPool;
 
 const SERVER_ID: &str = "server_id";
+const SESSION_KEY: &str = "session_key";
 
 #[actix_web::main]
 async fn main() -> Result<()>{
@@ -67,6 +69,15 @@ async fn main() -> Result<()>{
         }
     };
 
+    let session_key = match server::load_setting(&db_pool,SESSION_KEY).await? {
+        Some(v) => base64::decode(&v)?,
+        None => {
+            let random_bytes: Vec<u8> = (0..32).map(|_| { rand::random::<u8>() }).collect();
+            server::set_setting(&db_pool, SERVER_ID,&base64::encode(&random_bytes),false).await?;
+            random_bytes
+        }
+    };
+
     let state = web::Data::new(state::State {
         sql: db_pool,
         id: server_id
@@ -77,6 +88,13 @@ async fn main() -> Result<()>{
             // pass database pool to application so we can access it inside handlers
             .app_data(state.clone())
             .wrap(TracingLogger::default())
+            .wrap(IdentityService::new(
+                CookieIdentityPolicy::new(&session_key)
+                    .name("auth")
+                    .http_only(true)
+                    .same_site(SameSite::Strict)
+                    .secure(true),
+            ))
             .configure(users::routes::init) // init user routes
             .configure(server::routes::init) // init app api routes
     })

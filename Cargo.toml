@@ -6,6 +6,10 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+# database setting storage
+base64 = "0.13"
+# session encryption key
+rand = "0.8.4"
 # password stuff
 argon2 = "0.3"
 rand_core = { version = "0.6", features = ["std"] }
@@ -15,6 +19,7 @@ thiserror = "1"
 # webserver + async runtime
 actix-web = "4.0.0-beta.10"
 actix-rt = "2"
+actix-identity = "0.4.0-beta.3"
 # serialization
 serde = "1"
 serde_json = "1"

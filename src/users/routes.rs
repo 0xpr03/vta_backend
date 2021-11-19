@@ -72,7 +72,7 @@ async fn app_login(reg: web::Json<AccLogin>, state: AppState) -> StdResult<HttpR
     // login erfolgt mit signatur von UUID + zeit
     // jedes gerät(client) hat eine UUID für synchroner schlüsse per gerät?
     // ausser wir verschlüsseln mit gehemnis was nur wir kennen, dann ist das egal, brauchen aber einen Austausch des schlüssels
-
+    
     
     Ok(HttpResponse::Accepted().finish())
 }
