@@ -44,10 +44,18 @@ jobs:
             DATABASE_URL: mysql://user:password@127.0.0.1:${{ job.services.mariadb.ports[3306] }}/test
         run: python testing/x.py
 
-    #  - name: Test
-    #    env:
-    #        DATABASE_URL: mysql://user:password@127.0.0.1:${{ job.services.mariadb.ports[3306] }}/test
-    #    run: cargo test
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-check-${{ matrix.runtime }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Test
+        env:
+            DATABASE_URL: mysql://user:password@127.0.0.1:${{ job.services.mariadb.ports[3306] }}/test
+        run: cargo test
 
       - name: Build
         env:
