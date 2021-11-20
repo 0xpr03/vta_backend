@@ -6,7 +6,8 @@ use uuid::Uuid;
 #[ormx(table = "users", id = uuid, insertable)]
 pub struct User {
     // generate `User::get_by_user_id(u32) -> Result<Self>`
-    #[ormx(get_one = get_by_user_uuid(Uuid))]
+    #[ormx(get_one = by_user_uuid(&Uuid))]
+    #[ormx(get_optional = by_user_uuid_opt(&Uuid))]
     #[ormx(custom_type)]
     pub uuid: Uuid,
     pub name: String,
@@ -30,6 +31,7 @@ pub struct UpdateName {
 #[derive(Debug, ormx::Table, Serialize)]
 #[ormx(table = "user_key", id = user_id, insertable)]
 pub struct UserKey{
+    #[ormx(get_optional = by_user_uuid_opt(&Uuid))]
     #[ormx(get_one = get_by_user_uuid(Uuid))]
     #[ormx(custom_type)]
     pub user_id: Uuid,
@@ -43,7 +45,7 @@ pub struct AccRegister {
     pub proof: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[allow(non_camel_case_types)]
 pub enum KeyType {
     RSA_PEM,

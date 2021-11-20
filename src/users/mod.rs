@@ -17,7 +17,11 @@ enum AuthError {
     #[error("db error")]
     SQLX(#[from] sqlx::Error),
     #[error("jwt error")]
-    JWT(#[from] jsonwebtoken::errors::Error)
+    JWT(#[from] jsonwebtoken::errors::Error),
+    #[error("invalid or missing auth")]
+    NotAuthenticated,
+    #[error("invalid login")]
+    InvalidCredentials
 }
 
 fn jwt_err_into_response(error: &jsonwebtoken::errors::Error) -> HttpResponse {
@@ -44,6 +48,8 @@ impl ResponseError for AuthError {
             AuthError::UUID(_) => HttpResponse::BadRequest().reason("invalid UUID format").finish(),
             AuthError::Serde(_) => HttpResponse::BadRequest().reason("invalid payload").finish(),
             AuthError::JWT(e) => jwt_err_into_response(e),
+            AuthError::NotAuthenticated => HttpResponse::Unauthorized().finish(),
+            AuthError::InvalidCredentials => HttpResponse::Forbidden().finish(),
             e => {
                 warn!("{}",e);
                 HttpResponse::InternalServerError().finish()

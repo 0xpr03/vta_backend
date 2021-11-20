@@ -87,7 +87,6 @@ async fn main() -> Result<()>{
         App::new()
             // pass database pool to application so we can access it inside handlers
             .app_data(state.clone())
-            .wrap(TracingLogger::default())
             .wrap(IdentityService::new(
                 CookieIdentityPolicy::new(&session_key)
                     .name("auth")
@@ -95,6 +94,7 @@ async fn main() -> Result<()>{
                     .same_site(SameSite::Strict)
                     .secure(true),
             ))
+            .wrap(TracingLogger::default())
             .configure(users::routes::init) // init user routes
             .configure(server::routes::init) // init app api routes
     })
