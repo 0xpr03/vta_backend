@@ -1,0 +1,6 @@
+{
+    "recommendations": [
+        "serayuzgur.crates",
+        "matklad.rust-analyzer"
+    ]
+}
