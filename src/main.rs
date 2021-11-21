@@ -2,9 +2,9 @@ use std::str::FromStr;
 
 use actix_identity::{CookieIdentityPolicy, IdentityService};
 use color_eyre::eyre::Result;
-use tracing::{debug, error, info, metadata::LevelFilter};
+use tracing::{debug, error, info, instrument, metadata::LevelFilter};
 use tracing_actix_web::TracingLogger;
-use tracing_subscriber::FmtSubscriber;
+use tracing_subscriber::{FmtSubscriber, prelude::__tracing_subscriber_SubscriberExt};
 use sqlx::{MySqlPool, mysql::MySqlConnectOptions};
 use actix_web::{App, HttpServer, cookie::SameSite, web};
 use uuid::Uuid;
@@ -19,19 +19,49 @@ pub type Pool = MySqlPool;
 const SERVER_ID: &str = "server_id";
 const SESSION_KEY: &str = "session_key";
 
+fn init_telemetry() {
+    let app_name = env!("CARGO_BIN_NAME");
+
+    // Start a new Jaeger trace pipeline.
+    // Spans are exported in batch - recommended setup for a production application.
+    opentelemetry::global::set_text_map_propagator(opentelemetry::sdk::propagation::TraceContextPropagator::new());
+    let tracer = opentelemetry_jaeger::new_pipeline()
+        .with_service_name(app_name)
+        .install_batch(opentelemetry::runtime::TokioCurrentThread)
+        .expect("Failed to install OpenTelemetry tracer.");
+
+    // Filter based on level - trace, debug, info, warn, error
+    // Tunable via `RUST_LOG` env variable
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or(tracing_subscriber::EnvFilter::new("debug"));
+    // Create a `tracing` layer using the Jaeger tracer
+    let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
+    // Create a `tracing` layer to emit spans as structured logs to stdout
+    let formatting_layer = tracing_bunyan_formatter::BunyanFormattingLayer::new(app_name.into(), std::io::stdout);
+    // Combined them all together in a `tracing` subscriber
+    let subscriber = tracing_subscriber::Registry::default()
+        //.with(env_filter)
+        .with(telemetry)
+        .with(tracing_bunyan_formatter::JsonStorageLayer)
+        .with(formatting_layer);
+    tracing::subscriber::set_global_default(subscriber)
+        .expect("Failed to install `tracing` subscriber.")
+}
+
+#[instrument]
 #[actix_web::main]
 async fn main() -> Result<()>{
     color_eyre::install()?;
 
-    let subscriber = FmtSubscriber::builder()
-        // all spans/events with a level higher than TRACE (e.g, debug, info, warn, etc.)
-        // will be written to stdout.
-        .with_max_level(LevelFilter::TRACE)
-        // completes the builder.
-        .finish();
+    // let subscriber = FmtSubscriber::builder()
+    //     // all spans/events with a level higher than TRACE (e.g, debug, info, warn, etc.)
+    //     // will be written to stdout.
+    //     .with_max_level(LevelFilter::TRACE)
+    //     // completes the builder.
+    //     .finish();
 
-    tracing::subscriber::set_global_default(subscriber)
-        .expect("setting default subscriber failed");
+    // tracing::subscriber::set_global_default(subscriber)
+    //     .expect("setting default subscriber failed");
+    init_telemetry();
     info!("Starting {} {}",env!("CARGO_BIN_NAME"),env!("CARGO_PKG_VERSION"));
 
     let config = config::Settings::new()?;
@@ -106,6 +136,7 @@ async fn main() -> Result<()>{
     info!("Starting server, listening on {}:{}",config.listen_ip,config.listen_port);
     server.run().await?;
     info!("Shutting down");
+    opentelemetry::global::shutdown_tracer_provider();
 
     Ok(())
 }

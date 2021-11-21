@@ -77,6 +77,7 @@ fn verify_claims_auth<T: DeserializeOwned>(server_id: String,input: &str,key: &[
 /// App user login
 #[post("/api/v1/account/login/key")]
 async fn app_login(id: Identity, reg: web::Json<AccLogin>, state: AppState, root_span: RootSpan) -> Result<HttpResponse> {
+    trace!("acc login via key");
     let reg = reg.into_inner();
     let user = reg.iss;
     let key_data = dao::user_key(&state,&user).await?
@@ -99,7 +100,7 @@ async fn app_login(id: Identity, reg: web::Json<AccLogin>, state: AppState, root
 /// App user info
 #[get("/api/v1/account/info")]
 async fn app_info(id: Identity, state: AppState) -> Result<HttpResponse> {
-    info!("acc register request");
+    trace!("acc info request");
     let uuid = Uuid::parse_str(&id.identity().ok_or(AuthError::NotAuthenticated)?)?;
     Ok(match User::by_user_uuid_opt(&state.sql, &uuid).await? {
         Some(v) => HttpResponse::Ok().json(v),
