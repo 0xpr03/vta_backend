@@ -41,7 +41,7 @@ def register(server, pubkey, privkey, user_id):
     print("send header: "+str(jwt.get_unverified_header(encoded)))
 
     payload = {"key": pubkey, "proof": encoded, "keytype": "EC_PEM"}
-    res = requests.post(url+"/api/v1/account/register",json=payload)
+    res = requests.post(url+"/api/v1/account/register/new",json=payload)
     if res.status_code != 202:
         print(res)
         print(res.url)
