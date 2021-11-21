@@ -65,7 +65,12 @@ def login(server, privkey, user_id):
     return curSession
 
 def account_info(session):
-    session.get(url+"/api/v1/account/info").json()
+    res = session.get(url+"/api/v1/account/info")
+    if res.status_code != 200:
+        print(res)
+        print(res.text)
+        raise Exception(f"User info failed with {res.status_code}")
+    return res.json()
 
 
 startTime = time()
