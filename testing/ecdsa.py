@@ -4,7 +4,7 @@ import requests
 import uuid
 from time import time
 
-url = "http://localhost:8080"
+url = "http://127.0.0.1:8080"
 #header_json = {"Content-Type": "application/json", "Accept" : "application/json"}
 
 
