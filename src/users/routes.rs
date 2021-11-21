@@ -47,7 +47,7 @@ async fn app_register(reg: web::Json<AccRegister>,state: AppState) -> Result<Htt
 
     let uid = dao::register_user(&state,reg_claims,auth_key.into_bytes(),keytype).await?;
     trace!(?uid,"registered account with key");
-    Ok(HttpResponse::Accepted().finish())
+    Ok(HttpResponse::Ok().finish())
 }
 
 fn verify_claims_auth<T: DeserializeOwned>(sub: &str, server_id: String,input: &str,key: &[u8],k_type: &KeyType) -> Result<TokenData<T>>{
@@ -98,7 +98,7 @@ async fn app_login(id: Identity, reg: web::Json<AccLoginKey>, state: AppState) -
     }
 
     id.remember(user.to_string());
-    Ok(HttpResponse::NoContent().finish())
+    Ok(HttpResponse::Ok().finish())
 }
 
 #[instrument(skip(id))]
@@ -116,7 +116,7 @@ async fn form_login(id: Identity, reg: web::Json<AccLoginPassword>, state: AppSt
     }).await.context("failed joining verifier thread")??;
     
     id.remember(login_data.user_id.to_string());
-    Ok(HttpResponse::NoContent().finish())
+    Ok(HttpResponse::Ok().finish())
 }
 
 /// App user login
@@ -142,7 +142,7 @@ async fn app_password_register(reg: web::Json<PasswordBindRequest>, id: Identity
     }.insert(&mut conn).await?;
     // TODO: handle duplicate entries instead of erroring
 
-    Ok(HttpResponse::NoContent().finish())
+    Ok(HttpResponse::Ok().finish())
 }
 
 fn hash_pw(pw: String) -> Result<String>{

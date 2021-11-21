@@ -42,7 +42,7 @@ def register(server, pubkey, privkey, user_id):
 
     payload = {"key": pubkey, "proof": encoded, "keytype": "EC_PEM"}
     res = requests.post(url+"/api/v1/account/register/new",json=payload)
-    if res.status_code != 202:
+    if res.status_code != 200:
         print(res)
         print(res.url)
         print(res.text)
@@ -60,7 +60,7 @@ def login(server, privkey, user_id):
     print(res.url)
     print(res.text)
     print(res.headers)
-    if res.status_code != 204:
+    if res.status_code != 200:
         raise Exception(f"Login failed with {res.status_code}")
     return curSession
 
@@ -72,13 +72,35 @@ def account_info(session):
         raise Exception(f"User info failed with {res.status_code}")
     return res.json()
 
+def bind_password(session,email,password):
+    data = {'email': email,'password': password}
+    res = session.post(url+"/api/v1/account/register/password",json=data)
+    if res.status_code != 200:
+        print(res)
+        print(res.text)
+        raise Exception(f"Password bind failed with {res.status_code}")
+
+def login_password(email,password):
+    curSession = requests.Session()
+    data = {'email': email,'password': password}
+    res = session.post(url+"/api/v1/account/login/password",json=data)
+    if res.status_code != 200:
+        print(res)
+        print(res.text)
+        raise Exception(f"Password bind failed with {res.status_code}")
+    return curSession
 
 startTime = time()
 print("registering")
 register(server, pubkey, privkey, user_id)
 print("logging in")
 session = login(server, privkey, user_id)
-print(session)
+print(account_info(session))
+
+email = str(uuid.uuid4())
+password = str(uuid.uuid4())
+bind_password(session,email,password)
+session = login_password(email,password)
 print(account_info(session))
 executionTime = (time() - startTime)
 print('Execution time in seconds: ' + str(executionTime))
