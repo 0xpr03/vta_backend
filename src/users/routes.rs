@@ -96,7 +96,7 @@ async fn app_login(id: Identity, reg: web::Json<AccLoginKey>, state: AppState) -
         debug!(%claims.iss,%user,"claim iss != user");
         return Err(AuthError::InvalidCredentials);
     }
-
+    // TODO: update last seen
     id.remember(user.to_string());
     Ok(HttpResponse::Ok().finish())
 }
@@ -114,7 +114,7 @@ async fn form_login(id: Identity, reg: web::Json<AccLoginPassword>, state: AppSt
     task::spawn_blocking(move || -> Result<_>  {
         verify_pw(reg.password,hash_move)
     }).await.context("failed joining verifier thread")??;
-    
+    // TODO: update last seen
     id.remember(login_data.user_id.to_string());
     Ok(HttpResponse::Ok().finish())
 }
