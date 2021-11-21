@@ -24,7 +24,7 @@ use super::Result;
 
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(app_register)
-        .service(app_info)
+        .service(account_info)
         .service(debug_find_all)
         .service(app_login);
 }
@@ -37,7 +37,6 @@ async fn app_register(reg: web::Json<AccRegister>,state: AppState) -> Result<Htt
     let reg = reg.into_inner();
 
     let server_id = state.id.to_string();
-
     // FIX ME: loosing context here for tracing span
     let (reg_claims,auth_key, keytype) = task::spawn_blocking(move || -> Result<_>  {
         let td: TokenData<RegisterClaims> = verify_claims_auth("register",server_id,&reg.proof,reg.key.as_bytes(),&reg.keytype)?;
@@ -50,6 +49,7 @@ async fn app_register(reg: web::Json<AccRegister>,state: AppState) -> Result<Htt
 }
 
 fn verify_claims_auth<T: DeserializeOwned>(sub: &str, server_id: String,input: &str,key: &[u8],k_type: &KeyType) -> Result<TokenData<T>>{
+    debug!("verifying with {:?}", k_type);
     let aud = HashSet::from([server_id]);
     let algo_ec = vec![Algorithm::ES256,Algorithm::ES384];
     let mut validation = Validation {
@@ -76,14 +76,15 @@ fn verify_claims_auth<T: DeserializeOwned>(sub: &str, server_id: String,input: &
 }
 
 /// App user login
+#[instrument(skip(id))]
 #[post("/api/v1/account/login/key")]
-async fn app_login(id: Identity, reg: web::Json<AccLogin>, state: AppState, root_span: RootSpan) -> Result<HttpResponse> {
+async fn app_login(id: Identity, reg: web::Json<AccLogin>, state: AppState) -> Result<HttpResponse> {
     trace!("acc login via key");
     let reg = reg.into_inner();
     let user = reg.iss;
     let key_data = dao::user_key(&state,&user).await?
         .ok_or(AuthError::InvalidCredentials)?;
-    
+    trace!(?key_data,"found user keys");
     let server_id = state.id.to_string();
     let claims = task::spawn_blocking(move || -> Result<_>  {
         let td: TokenData<LoginClaims> = verify_claims_auth("login", server_id,&reg.proof,&key_data.auth_key,&key_data.key_type)?;
@@ -99,8 +100,9 @@ async fn app_login(id: Identity, reg: web::Json<AccLogin>, state: AppState, root
 }
 
 /// App user info
+#[instrument(skip(id))]
 #[get("/api/v1/account/info")]
-async fn app_info(id: Identity, state: AppState) -> Result<HttpResponse> {
+async fn account_info(id: Identity, state: AppState) -> Result<HttpResponse> {
     trace!("acc info request");
     let uuid = Uuid::parse_str(&id.identity().ok_or(AuthError::NotAuthenticated)?)?;
     Ok(match User::by_user_uuid_opt(&state.sql, &uuid).await? {
@@ -113,6 +115,7 @@ async fn app_info(id: Identity, state: AppState) -> Result<HttpResponse> {
 }
 
 /// Debug route
+#[instrument]
 #[get("/users")]
 async fn debug_find_all(state: AppState) -> impl Responder {
     let result = User::all(&state.get_ref().sql).await;

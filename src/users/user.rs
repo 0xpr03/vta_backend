@@ -40,6 +40,7 @@ pub struct UserKey{
     pub key_type: i32,
 }
 
+#[derive(Debug)]
 pub struct UserKeyParsed {
     pub auth_key: Vec<u8>,
     pub key_type: KeyType,
