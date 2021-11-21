@@ -40,7 +40,7 @@ async fn app_register(reg: web::Json<AccRegister>,state: AppState) -> Result<Htt
 
     // FIX ME: loosing context here for tracing span
     let (reg_claims,auth_key, keytype) = task::spawn_blocking(move || -> Result<_>  {
-        let td: TokenData<RegisterClaims> = verify_claims_auth(server_id,&reg.proof,reg.key.as_bytes(),&reg.keytype)?;
+        let td: TokenData<RegisterClaims> = verify_claims_auth("register",server_id,&reg.proof,reg.key.as_bytes(),&reg.keytype)?;
         Ok((td.claims,reg.key,reg.keytype))
     }).await.context("failed joining verifier thread")??;
 
@@ -49,12 +49,13 @@ async fn app_register(reg: web::Json<AccRegister>,state: AppState) -> Result<Htt
     Ok(HttpResponse::Accepted().finish())
 }
 
-fn verify_claims_auth<T: DeserializeOwned>(server_id: String,input: &str,key: &[u8],k_type: &KeyType) -> Result<TokenData<T>>{
+fn verify_claims_auth<T: DeserializeOwned>(sub: &str, server_id: String,input: &str,key: &[u8],k_type: &KeyType) -> Result<TokenData<T>>{
     let aud = HashSet::from([server_id]);
     let algo_ec = vec![Algorithm::ES256,Algorithm::ES384];
     let mut validation = Validation {
         aud: Some(aud),
-        sub: Some(String::from("register")),
+        // FIXME: allow zero copy in validator
+        sub: Some(sub.to_owned()),
         leeway: 5,
         algorithms: algo_ec,
         ..Validation::default()
@@ -85,7 +86,7 @@ async fn app_login(id: Identity, reg: web::Json<AccLogin>, state: AppState, root
     
     let server_id = state.id.to_string();
     let claims = task::spawn_blocking(move || -> Result<_>  {
-        let td: TokenData<LoginClaims> = verify_claims_auth(server_id,&reg.proof,&key_data.auth_key,&key_data.key_type)?;
+        let td: TokenData<LoginClaims> = verify_claims_auth("login", server_id,&reg.proof,&key_data.auth_key,&key_data.key_type)?;
         Ok(td.claims)
     }).await.context("failed joining verifier thread")??;
     if claims.iss != user {
