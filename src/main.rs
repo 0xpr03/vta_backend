@@ -36,14 +36,14 @@ fn init_telemetry() {
 
     // Filter based on level - trace, debug, info, warn, error
     // Tunable via `RUST_LOG` env variable
-    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or(tracing_subscriber::EnvFilter::new("debug"));
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or(tracing_subscriber::EnvFilter::new("trace"));
     // Create a `tracing` layer using the Jaeger tracer
     let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
     // Create a `tracing` layer to emit spans as structured logs to stdout
     let formatting_layer = tracing_bunyan_formatter::BunyanFormattingLayer::new(app_name.into(), std::io::stdout);
     // Combined them all together in a `tracing` subscriber
     let subscriber = tracing_subscriber::Registry::default()
-        //.with(env_filter)
+        .with(env_filter)
         .with(telemetry)
         .with(tracing_bunyan_formatter::JsonStorageLayer)
         .with(formatting_layer);
@@ -51,7 +51,6 @@ fn init_telemetry() {
         .expect("Failed to install `tracing` subscriber.")
 }
 
-#[instrument]
 #[actix_web::main]
 async fn main() -> Result<()>{
     color_eyre::install()?;
@@ -66,9 +65,15 @@ async fn main() -> Result<()>{
     // tracing::subscriber::set_global_default(subscriber)
     //     .expect("setting default subscriber failed");
     init_telemetry();
+    main_().await
+}
+
+#[instrument]
+async fn main_() -> Result<()> {
     info!("Starting {} {}",env!("CARGO_BIN_NAME"),env!("CARGO_PKG_VERSION"));
     if !SECURE_COOKIE {
         eprintln!("Secure (httpS) cookies disabled in debug mode!");
+        error!("Secure (httpS) cookies disabled in debug mode!")
     }
     let config = config::Settings::new()?;
 
