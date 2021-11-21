@@ -83,7 +83,7 @@ def bind_password(session,email,password):
 def login_password(email,password):
     curSession = requests.Session()
     data = {'email': email,'password': password}
-    res = session.post(url+"/api/v1/account/login/password",json=data)
+    res = curSession.post(url+"/api/v1/account/login/password",json=data)
     if res.status_code != 200:
         print(res)
         print(res.text)
@@ -97,9 +97,11 @@ print("logging in")
 session = login(server, privkey, user_id)
 print(account_info(session))
 
+print("binding password")
 email = str(uuid.uuid4())
 password = str(uuid.uuid4())
 bind_password(session,email,password)
+print("logging in via password")
 session = login_password(email,password)
 print(account_info(session))
 executionTime = (time() - startTime)

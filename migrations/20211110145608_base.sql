@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS user_login
 (
     user_id BINARY(16) PRIMARY KEY NOT NULL,
     email VARCHAR(319) COLLATE 'utf8mb4_general_ci' NOT NULL UNIQUE,
-    password CHAR(82) COLLATE 'ascii_general_ci' NOT NULL,
+    password VARCHAR(255) COLLATE 'ascii_general_ci' NOT NULL,
     verified BOOLEAN NOT NULL DEFAULT FALSE,
     CONSTRAINT `fk_user_id`
         FOREIGN KEY (user_id) REFERENCES users (uuid)
