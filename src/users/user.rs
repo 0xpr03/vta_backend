@@ -29,7 +29,7 @@ pub struct UpdateName {
     pub locked: Option<String>,
 }
 
-#[derive(Debug, ormx::Table, Serialize)]
+#[derive(ormx::Table, Serialize)]
 #[ormx(table = "user_key", id = user_id, insertable)]
 pub struct UserKey{
     #[ormx(get_optional = by_user_uuid_opt(&Uuid))]
@@ -65,7 +65,7 @@ pub struct KeyTypeRecord {
     pub name: KeyType,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct RegisterClaims {
     pub iss: Uuid,
     pub name: String,

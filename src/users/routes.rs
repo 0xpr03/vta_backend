@@ -1,5 +1,6 @@
 use actix_identity::Identity;
 use actix_rt::task;
+use actix_web::HttpRequest;
 use actix_web::{HttpResponse, Responder, get, post, web};
 use color_eyre::eyre::Context;
 use jsonwebtoken::Algorithm;
@@ -102,9 +103,10 @@ async fn app_login(id: Identity, reg: web::Json<AccLogin>, state: AppState) -> R
 /// App user info
 #[instrument(skip(id))]
 #[get("/api/v1/account/info")]
-async fn account_info(id: Identity, state: AppState) -> Result<HttpResponse> {
-    trace!("acc info request");
-    let uuid = Uuid::parse_str(&id.identity().ok_or(AuthError::NotAuthenticated)?)?;
+async fn account_info(id: Identity, state: AppState, req: HttpRequest) -> Result<HttpResponse> {
+    let identity = id.identity();
+    trace!(?identity,"acc info request");
+    let uuid = Uuid::parse_str(&identity.ok_or(AuthError::NotAuthenticated)?)?;
     Ok(match User::by_user_uuid_opt(&state.sql, &uuid).await? {
         Some(v) => HttpResponse::Ok().json(v),
         None => {

@@ -18,6 +18,10 @@ pub type Pool = MySqlPool;
 
 const SERVER_ID: &str = "server_id";
 const SESSION_KEY: &str = "session_key";
+#[cfg(debug_assertions)]
+const SECURE_COOKIE: bool = false;
+#[cfg(not(debug_assertions))]
+const SECURE_COOKIE: bool = true;
 
 fn init_telemetry() {
     let app_name = env!("CARGO_BIN_NAME");
@@ -63,7 +67,9 @@ async fn main() -> Result<()>{
     //     .expect("setting default subscriber failed");
     init_telemetry();
     info!("Starting {} {}",env!("CARGO_BIN_NAME"),env!("CARGO_PKG_VERSION"));
-
+    if !SECURE_COOKIE {
+        eprintln!("Secure (httpS) cookies disabled in debug mode!");
+    }
     let config = config::Settings::new()?;
 
     let mut options = MySqlConnectOptions::new()
@@ -128,7 +134,7 @@ async fn main() -> Result<()>{
                     .name("auth")
                     .http_only(true)
                     .same_site(SameSite::Strict)
-                    .secure(true),
+                    .secure(SECURE_COOKIE),
             ))
             .wrap(TracingLogger::default())
             .configure(users::routes::init) // init user routes

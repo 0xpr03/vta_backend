@@ -2,13 +2,14 @@ use std::convert::TryInto;
 use std::str::FromStr;
 
 use ormx::Insert;
+use tracing::*;
 use uuid::Uuid;
 use super::user::*;
 use super::Result;
 use crate::state::AppState;
 
 // no async traits and I'd like to avoid async_trait
-
+#[instrument]
 pub async fn register_user(state: &AppState, claims: RegisterClaims, auth_key: Vec<u8>, key_type: KeyType) -> Result<Uuid> {
     let mut transaction = state.sql.begin().await?;
     let user = InsertUser {
@@ -26,16 +27,18 @@ pub async fn register_user(state: &AppState, claims: RegisterClaims, auth_key: V
         }
     };
 
-    let ins = InsertUserKey {
-        user_id: user.uuid,
-        auth_key,
-        key_type: type_id,
-    }.insert(&mut transaction).await?;
+    sqlx::query!("INSERT INTO user_key (user_id,auth_key,key_type) VALUES(?,?,?)",user.uuid,auth_key,type_id).execute(&mut transaction).await?;
+    // let ins = InsertUserKey {
+    //     user_id: user.uuid,
+    //     auth_key,
+    //     key_type: type_id,
+    // }.insert(&mut transaction).await?;
 
     transaction.commit().await?;
-    Ok(ins.user_id)
+    Ok(user.uuid)
 }
 
+#[instrument]
 pub async fn user_key(state: &AppState, user: &Uuid) -> Result<Option<UserKeyParsed>> {
     if let Some(raw) = UserKey::by_user_uuid_opt(&state.sql, user).await? {
         let r = sqlx::query!("SELECT name FROM key_type WHERE id = ?",raw.key_type).fetch_one(&state.sql).await?;

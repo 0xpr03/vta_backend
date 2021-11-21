@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS key_type
 CREATE TABLE IF NOT EXISTS user_key
 (
     user_id BINARY(16) NOT NULL PRIMARY KEY,
-    auth_key BINARY NOT NULL,
+    auth_key VARBINARY(400) NOT NULL,
     key_type INT NOT NULL,
     CONSTRAINT `fk_user_id_key`
         FOREIGN KEY (user_id) REFERENCES users (uuid)

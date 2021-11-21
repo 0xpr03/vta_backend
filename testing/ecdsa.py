@@ -50,21 +50,30 @@ def register(server, pubkey, privkey, user_id):
         raise Exception(f"Register failed with {res.status_code}")
 
 def login(server, privkey, user_id):
+    curSession = requests.Session()
     payload = jwt_payload(server,user_id, "login")
     encoded = jwt.encode(payload,key= privkey, algorithm="ES256")
 
     payload = {"iss": str(user_id), "proof": encoded}
-    res = requests.post(url+"/api/v1/account/login/key",json=payload)
-    if res.status_code != 200:
-        print(res)
+    res = curSession.post(url+"/api/v1/account/login/key",json=payload)
+    print(res)
+    print(res.url)
+    print(res.text)
+    print(res.headers)
+    if res.status_code != 204:
         raise Exception(f"Login failed with {res.status_code}")
-    return res.cookies
+    return curSession
 
-def account_info(cookies):
-    requests.get(url+"/api/v1/account/info",cookies=cookies).json()
+def account_info(session):
+    session.get(url+"/api/v1/account/info").json()
 
+
+startTime = time()
 print("registering")
 register(server, pubkey, privkey, user_id)
 print("logging in")
-cookies = login(server, privkey, user_id)
-print(account_info(cookies))
+session = login(server, privkey, user_id)
+print(session)
+print(account_info(session))
+executionTime = (time() - startTime)
+print('Execution time in seconds: ' + str(executionTime))
