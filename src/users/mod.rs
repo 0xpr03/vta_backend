@@ -21,7 +21,9 @@ pub enum AuthError {
     #[error("invalid or missing auth")]
     NotAuthenticated,
     #[error("invalid login")]
-    InvalidCredentials
+    InvalidCredentials,
+    #[error("hashing error")]
+    Argon2(#[from] argon2::password_hash::Error)
 }
 
 fn jwt_err_into_response(error: &jsonwebtoken::errors::Error) -> HttpResponse {

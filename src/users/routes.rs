@@ -1,17 +1,18 @@
 use actix_identity::Identity;
 use actix_rt::task;
 use actix_web::HttpRequest;
-use actix_web::{HttpResponse, Responder, get, post, web};
+use actix_web::{HttpResponse, get, post, web};
+use argon2::{self, PasswordHasher, PasswordVerifier};
 use color_eyre::eyre::Context;
 use jsonwebtoken::Algorithm;
 use jsonwebtoken::DecodingKey;
 use jsonwebtoken::TokenData;
 use jsonwebtoken::Validation;
 use jsonwebtoken::decode;
-use ormx::Table;
+use ormx::{Insert, Table};
+use rand_core::OsRng;
 use serde::de::DeserializeOwned;
 use tracing::*;
-use tracing_actix_web::RootSpan;
 use uuid::Uuid;
 
 use crate::state::AppState;
@@ -19,20 +20,20 @@ use crate::state::AppState;
 use super::dao;
 use super::AuthError;
 use std::collections::HashSet;
-use std::result::Result as StdResult;
 use super::user::*;
 use super::Result;
 
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(app_register)
         .service(account_info)
-        .service(debug_find_all)
-        .service(app_login);
+        .service(app_login)
+        .service(app_password_register)
+        .service(form_login);
 }
 
 /// App user register route.
 #[instrument]
-#[post("/api/v1/account/register")]
+#[post("/api/v1/account/register/new")]
 async fn app_register(reg: web::Json<AccRegister>,state: AppState) -> Result<HttpResponse> {
     trace!("acc register request");
     let reg = reg.into_inner();
@@ -79,13 +80,13 @@ fn verify_claims_auth<T: DeserializeOwned>(sub: &str, server_id: String,input: &
 /// App user login
 #[instrument(skip(id))]
 #[post("/api/v1/account/login/key")]
-async fn app_login(id: Identity, reg: web::Json<AccLogin>, state: AppState) -> Result<HttpResponse> {
+async fn app_login(id: Identity, reg: web::Json<AccLoginKey>, state: AppState) -> Result<HttpResponse> {
     trace!("acc login via key");
     let reg = reg.into_inner();
     let user = reg.iss;
     let key_data = dao::user_key(&state,&user).await?
         .ok_or(AuthError::InvalidCredentials)?;
-    trace!(?key_data,"found user keys");
+    trace!(?key_data,"user key");
     let server_id = state.id.to_string();
     let claims = task::spawn_blocking(move || -> Result<_>  {
         let td: TokenData<LoginClaims> = verify_claims_auth("login", server_id,&reg.proof,&key_data.auth_key,&key_data.key_type)?;
@@ -98,6 +99,69 @@ async fn app_login(id: Identity, reg: web::Json<AccLogin>, state: AppState) -> R
 
     id.remember(user.to_string());
     Ok(HttpResponse::NoContent().finish())
+}
+
+#[instrument(skip(id))]
+#[post("/api/v1/account/login/password")]
+async fn form_login(id: Identity, reg: web::Json<AccLoginPassword>, state: AppState, req: HttpRequest) -> Result<HttpResponse> {
+    trace!("acc login via key");
+    let reg: AccLoginPassword = reg.into_inner();
+
+    let mut conn = state.sql.acquire().await?;
+    let login_data = UserLogin::by_email_opt(&mut conn, &reg.email).await?
+        .ok_or(AuthError::InvalidCredentials)?;
+    let hash_move = login_data.password;
+    task::spawn_blocking(move || -> Result<_>  {
+        verify_pw(reg.password,hash_move)
+    }).await.context("failed joining verifier thread")??;
+    
+    id.remember(login_data.user_id.to_string());
+    Ok(HttpResponse::NoContent().finish())
+}
+
+/// App user login
+#[instrument(skip(id))]
+#[post("/api/v1/account/register/password")]
+async fn app_password_register(reg: web::Json<PasswordBindRequest>, id: Identity, state: AppState) -> Result<HttpResponse> {
+    let identity = id.identity();
+    trace!(?identity,"acc info request");
+    let uuid = Uuid::parse_str(&identity.ok_or(AuthError::NotAuthenticated)?)?;
+    let reg = reg.into_inner();
+
+    let pw_move = reg.password;
+    let hashed_password = task::spawn_blocking(move || -> Result<_>  {
+        hash_pw(pw_move)
+    }).await.context("failed joining verifier thread")??;
+
+    let mut conn = state.sql.acquire().await?;
+    InsertUserLogin {
+        user_id: uuid,
+        email: reg.email,
+        password: hashed_password,
+        verified: false,
+    }.insert(&mut conn).await?;
+    // TODO: handle duplicate entries instead of erroring
+
+    Ok(HttpResponse::NoContent().finish())
+}
+
+fn hash_pw(pw: String) -> Result<String>{
+    let salt = argon2::password_hash::SaltString::generate(&mut OsRng);
+
+    // Argon2 with default params (Argon2id v19)
+    let argon2 = argon2::Argon2::default();
+
+    // Hash password to PHC string ($argon2id$v=19$...)
+    Ok(argon2.hash_password(pw.as_bytes(), &salt)?.to_string())
+}
+
+fn verify_pw(pw: String, hash: String) -> Result<()> {
+    let parsed_hash = argon2::PasswordHash::new(&hash)?;
+
+    let argon2 = argon2::Argon2::default();
+
+    argon2.verify_password(pw.as_bytes(), &parsed_hash)?;
+    Ok(())
 }
 
 /// App user info
@@ -114,19 +178,4 @@ async fn account_info(id: Identity, state: AppState, req: HttpRequest) -> Result
             HttpResponse::Gone().body("deleted - user invalid")
         }
     })
-}
-
-/// Debug route
-#[instrument]
-#[get("/users")]
-async fn debug_find_all(state: AppState) -> impl Responder {
-    let result = User::all(&state.get_ref().sql).await;
-    match result {
-        Ok(users) => HttpResponse::Ok().json(users),
-        Err(err) => {
-            error!("error fetching todos: {}", err);
-            HttpResponse::InternalServerError()
-                .body("Error trying to read all todos from database")
-        }
-    }
 }

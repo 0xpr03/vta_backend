@@ -11,7 +11,7 @@ base64 = "0.13"
 # session encryption key
 rand = "0.8.4"
 # password stuff
-argon2 = "0.3"
+argon2 = {version = "0.3", features = ["std"] }
 rand_core = { version = "0.6", features = ["std"] }
 # errors
 color-eyre = "0.5"

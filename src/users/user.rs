@@ -1,3 +1,5 @@
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 use sqlx::types::{chrono::{DateTime, Utc}};
 use strum::EnumString;
@@ -73,12 +75,54 @@ pub struct RegisterClaims {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct AccLogin {
+pub struct AccLoginKey {
     pub iss: Uuid,
     pub proof: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AccLoginPassword {
+    pub email: String,
+    pub password: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AccBindPassword {
+    pub iss: Uuid,
+    pub data: String,
 }
 
 #[derive(Deserialize)]
 pub struct LoginClaims {
     pub iss: Uuid
+}
+
+#[derive(Deserialize)]
+pub struct PasswordBindRequest {
+    pub password: String,
+    pub email: String,
+}
+
+// don't print passwords into the log
+impl fmt::Debug for PasswordBindRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Point")
+         .field("password", &self.password.len())
+         .field("email", &self.email)
+         .finish()
+    }
+}
+
+#[derive(Debug, ormx::Table, Serialize)]
+#[ormx(table = "user_login", id = user_id, insertable)]
+pub struct UserLogin {
+    #[ormx(get_one = by_user_uuid(&Uuid))]
+    #[ormx(get_optional = by_user_uuid_opt(&Uuid))]
+    #[ormx(custom_type)]
+    pub user_id: Uuid,
+    #[ormx(get_optional = by_email_opt(&str))]
+    pub email: String,
+    pub password: String,
+    #[ormx(custom_type)]
+    pub verified: bool,
 }
