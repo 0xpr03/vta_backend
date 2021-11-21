@@ -49,13 +49,24 @@ CREATE TABLE IF NOT EXISTS password_reset
         ON UPDATE RESTRICT
 );
 
+CREATE TABLE IF NOT EXISTS key_type
+(
+    id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(255) NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS user_key
 (
     user_id BINARY(16) NOT NULL PRIMARY KEY,
     auth_key BINARY NOT NULL,
+    key_type INT NOT NULL,
     CONSTRAINT `fk_user_id_key`
         FOREIGN KEY (user_id) REFERENCES users (uuid)
         ON DELETE CASCADE
+        ON UPDATE RESTRICT,
+    CONSTRAINT `fk_key_type_key`
+        FOREIGN KEY (key_type) REFERENCES key_type (id)
+        ON DELETE RESTRICT
         ON UPDATE RESTRICT
 );
 

@@ -7,7 +7,7 @@ pub mod user;
 pub mod dao;
 
 #[derive(Error, Debug)]
-enum AuthError {
+pub enum AuthError {
     #[error("unknown data store error")]
     Other(#[from] color_eyre::eyre::Error),
     #[error("invalid UUID")]
@@ -57,3 +57,5 @@ impl ResponseError for AuthError {
         }
     }
 }
+
+type Result<T> = std::result::Result<T,AuthError>;

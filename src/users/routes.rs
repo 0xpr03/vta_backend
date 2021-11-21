@@ -4,22 +4,23 @@ use actix_web::{HttpResponse, Responder, get, post, web};
 use color_eyre::eyre::Context;
 use jsonwebtoken::Algorithm;
 use jsonwebtoken::DecodingKey;
+use jsonwebtoken::TokenData;
 use jsonwebtoken::Validation;
 use jsonwebtoken::decode;
 use ormx::Table;
+use serde::de::DeserializeOwned;
 use tracing::*;
 use tracing_actix_web::RootSpan;
 use uuid::Uuid;
 
 use crate::state::AppState;
 
+use super::dao;
 use super::AuthError;
 use std::collections::HashSet;
 use std::result::Result as StdResult;
 use super::user::*;
-use super::dao::*;
-
-type Result<T> = StdResult<T,AuthError>;
+use super::Result;
 
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(app_register)
@@ -35,56 +36,64 @@ async fn app_register(reg: web::Json<AccRegister>,state: AppState) -> Result<Htt
     trace!("acc register request");
     let reg = reg.into_inner();
 
-    let aud = HashSet::from([state.id.to_string()]);
+    let server_id = state.id.to_string();
 
     // FIX ME: loosing context here for tracing span
-    let (reg_claims,auth_key) = task::spawn_blocking(move || -> Result<_>  {
-        // can't allow Algorithm::RS256,Algorithm::RS384,Algorithm::RS512 untill fixes
-        // https://github.com/Keats/jsonwebtoken/issues/219
-
-        let algo_ec = vec![Algorithm::ES256,Algorithm::ES384];
-        let mut validation = Validation {
-            aud: Some(aud),
-            sub: Some(String::from("register")),
-            leeway: 5,
-            algorithms: algo_ec,
-            ..Validation::default()
-        };
-        let key = match reg.keytype {
-            KeyType::EC_PEM => {
-                DecodingKey::from_ec_pem(reg.key.as_bytes())?
-            },
-            KeyType::RSA_PEM => {
-                validation.algorithms = vec![Algorithm::RS256,Algorithm::RS384,Algorithm::RS512];
-                DecodingKey::from_rsa_pem(reg.key.as_bytes())?
-            },
-        };
-        let td = decode::<RegisterClaims>(&reg.proof, &key, &validation)?;
-        Ok((td.claims,reg.key))
+    let (reg_claims,auth_key, keytype) = task::spawn_blocking(move || -> Result<_>  {
+        let td: TokenData<RegisterClaims> = verify_claims_auth(server_id,&reg.proof,reg.key.as_bytes(),&reg.keytype)?;
+        Ok((td.claims,reg.key,reg.keytype))
     }).await.context("failed joining verifier thread")??;
 
-    let uid = register_user(&state,reg_claims,auth_key.into_bytes()).await?;
+    let uid = dao::register_user(&state,reg_claims,auth_key.into_bytes(),keytype).await?;
     trace!(?uid,"registered account with key");
     Ok(HttpResponse::Accepted().finish())
 }
 
-fn decrypt_claims<T: DeserializeOwned>(input: Vec<u8>,key: ) -> Result<(T,)>{
-
+fn verify_claims_auth<T: DeserializeOwned>(server_id: String,input: &str,key: &[u8],k_type: &KeyType) -> Result<TokenData<T>>{
+    let aud = HashSet::from([server_id]);
+    let algo_ec = vec![Algorithm::ES256,Algorithm::ES384];
+    let mut validation = Validation {
+        aud: Some(aud),
+        sub: Some(String::from("register")),
+        leeway: 5,
+        algorithms: algo_ec,
+        ..Validation::default()
+    };
+    let key = match k_type {
+        KeyType::EC_PEM => {
+            DecodingKey::from_ec_pem(key)?
+        },
+        KeyType::RSA_PEM => {
+            // can't mix RS and EC untill fixes
+            // https://github.com/Keats/jsonwebtoken/issues/219
+            validation.algorithms = vec![Algorithm::RS256,Algorithm::RS384,Algorithm::RS512];
+            DecodingKey::from_rsa_pem(key)?
+        },
+    };
+    let td = decode::<T>(input, &key, &validation)?;
+    Ok(td)
 }
 
 /// App user login
 #[post("/api/v1/account/login/key")]
 async fn app_login(id: Identity, reg: web::Json<AccLogin>, state: AppState, root_span: RootSpan) -> Result<HttpResponse> {
     let reg = reg.into_inner();
-    let key_data = UserKey::by_user_uuid_opt(&state.sql, &reg.iss).await?
+    let user = reg.iss;
+    let key_data = dao::user_key(&state,&user).await?
         .ok_or(AuthError::InvalidCredentials)?;
-    // server hat UUID
-    // login erfolgt mit signatur von UUID + zeit
-    // jedes gerät(client) hat eine UUID für synchroner schlüsse per gerät?
-    // ausser wir verschlüsseln mit gehemnis was nur wir kennen, dann ist das egal, brauchen aber einen Austausch des schlüssels
     
-    
-    Ok(HttpResponse::NotImplemented().finish())
+    let server_id = state.id.to_string();
+    let claims = task::spawn_blocking(move || -> Result<_>  {
+        let td: TokenData<LoginClaims> = verify_claims_auth(server_id,&reg.proof,&key_data.auth_key,&key_data.key_type)?;
+        Ok(td.claims)
+    }).await.context("failed joining verifier thread")??;
+    if claims.iss != user {
+        debug!(%claims.iss,%user,"claim iss != user");
+        return Err(AuthError::InvalidCredentials);
+    }
+
+    id.remember(user.to_string());
+    Ok(HttpResponse::NoContent().finish())
 }
 
 /// App user info

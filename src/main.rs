@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use actix_identity::{CookieIdentityPolicy, IdentityService};
 use color_eyre::eyre::Result;
-use tracing::{error, info, metadata::LevelFilter};
+use tracing::{debug, error, info, metadata::LevelFilter};
 use tracing_actix_web::TracingLogger;
 use tracing_subscriber::FmtSubscriber;
 use sqlx::{MySqlPool, mysql::MySqlConnectOptions};
@@ -47,6 +47,7 @@ async fn main() -> Result<()>{
 
     let db_pool = MySqlPool::connect_with(options).await?;
     
+    debug!("Migrating DB");
     let mut stm = db_pool.begin().await?;
     match sqlx::migrate!()
     .run(&mut stm)
@@ -58,6 +59,7 @@ async fn main() -> Result<()>{
             return Err(e.into());
         },
     }
+    debug!("Migration finished");
 
 
     let server_id = match server::load_setting(&db_pool,SERVER_ID).await? {
@@ -68,12 +70,13 @@ async fn main() -> Result<()>{
             id
         }
     };
+    debug!("Server id {}",server_id);
 
     let session_key = match server::load_setting(&db_pool,SESSION_KEY).await? {
         Some(v) => base64::decode(&v)?,
         None => {
             let random_bytes: Vec<u8> = (0..32).map(|_| { rand::random::<u8>() }).collect();
-            server::set_setting(&db_pool, SERVER_ID,&base64::encode(&random_bytes),false).await?;
+            server::set_setting(&db_pool, SESSION_KEY,&base64::encode(&random_bytes),false).await?;
             random_bytes
         }
     };

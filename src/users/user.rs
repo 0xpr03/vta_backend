@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sqlx::types::{chrono::{DateTime, Utc}};
+use strum::EnumString;
 use uuid::Uuid;
 
 #[derive(Debug, ormx::Table, Serialize)]
@@ -32,10 +33,16 @@ pub struct UpdateName {
 #[ormx(table = "user_key", id = user_id, insertable)]
 pub struct UserKey{
     #[ormx(get_optional = by_user_uuid_opt(&Uuid))]
-    #[ormx(get_one = get_by_user_uuid(Uuid))]
+    #[ormx(get_one = by_user_uuid(Uuid))]
     #[ormx(custom_type)]
     pub user_id: Uuid,
     pub auth_key: Vec<u8>,
+    pub key_type: i32,
+}
+
+pub struct UserKeyParsed {
+    pub auth_key: Vec<u8>,
+    pub key_type: KeyType,
 }
 
 #[derive(Debug, Deserialize)]
@@ -45,11 +52,16 @@ pub struct AccRegister {
     pub proof: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, EnumString, sqlx::Type, Serialize, Deserialize)]
 #[allow(non_camel_case_types)]
 pub enum KeyType {
     RSA_PEM,
     EC_PEM
+}
+
+#[derive(Debug,sqlx::FromRow)]
+pub struct KeyTypeRecord {
+    pub name: KeyType,
 }
 
 #[derive(Deserialize)]
@@ -63,4 +75,9 @@ pub struct RegisterClaims {
 pub struct AccLogin {
     pub iss: Uuid,
     pub proof: String,
+}
+
+#[derive(Deserialize)]
+pub struct LoginClaims {
+    pub iss: Uuid
 }
