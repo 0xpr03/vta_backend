@@ -5,7 +5,7 @@ use color_eyre::eyre::Result;
 use tracing::{debug, error, info, instrument, metadata::LevelFilter};
 use tracing_actix_web::TracingLogger;
 use tracing_subscriber::{FmtSubscriber, prelude::__tracing_subscriber_SubscriberExt};
-use sqlx::{MySqlPool, mysql::MySqlConnectOptions};
+use sqlx::{Executor, MySqlPool, mysql::{MySqlConnectOptions, MySqlPoolOptions}};
 use actix_web::{App, HttpServer, cookie::SameSite, web};
 use uuid::Uuid;
 
@@ -75,7 +75,10 @@ async fn main() -> Result<()>{
         options = options.password(&pw);
     }
 
-    let db_pool = MySqlPool::connect_with(options).await?;
+    let db_pool = MySqlPoolOptions::new().after_connect(|conn| Box::pin(async move {
+        conn.execute("SET SESSION innodb_strict_mode=ON;").await?;
+        Ok(())
+     })).connect_with(options).await?;
     
     debug!("Migrating DB");
     let mut stm = db_pool.begin().await?;
