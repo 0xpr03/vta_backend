@@ -10,3 +10,4 @@ user = "vta_sync"
 # comment out to leave blank
 password = "changeme"
 db = "vta_sync"
+max_conn = 10

@@ -8,6 +8,7 @@ pub struct Database {
     pub user: String,
     pub password: Option<String>,
     pub db: String,
+    pub max_conn: u32,
 }
 
 #[derive(Debug, Deserialize)]

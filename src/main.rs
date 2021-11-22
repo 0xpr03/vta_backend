@@ -88,8 +88,8 @@ async fn main_() -> Result<()> {
         options = options.password(&pw);
     }
 
-    let db_pool = MySqlPoolOptions::new().after_connect(|conn| Box::pin(async move {
-        conn.execute("SET SESSION innodb_strict_mode=ON;").await?;
+    let db_pool = MySqlPoolOptions::new().max_connections(config.database.max_conn).after_connect(|conn| Box::pin(async move {
+        conn.execute("SET SESSION sql_mode=STRICT_ALL_TABLES; SET SESSION innodb_strict_mode=ON;").await?;
         Ok(())
      })).connect_with(options).await?;
     
