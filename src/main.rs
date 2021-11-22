@@ -2,9 +2,9 @@ use std::str::FromStr;
 
 use actix_identity::{CookieIdentityPolicy, IdentityService};
 use color_eyre::eyre::Result;
-use tracing::{debug, error, info, instrument, metadata::LevelFilter};
+use tracing::{debug, error, info, instrument};
 use tracing_actix_web::TracingLogger;
-use tracing_subscriber::{FmtSubscriber, prelude::__tracing_subscriber_SubscriberExt};
+use tracing_subscriber::prelude::__tracing_subscriber_SubscriberExt;
 use sqlx::{Executor, MySqlPool, mysql::{MySqlConnectOptions, MySqlPoolOptions}};
 use actix_web::{App, HttpServer, cookie::SameSite, web};
 use uuid::Uuid;
@@ -13,7 +13,9 @@ mod config;
 mod users;
 mod state;
 mod server;
+mod lists;
 mod prelude;
+
 pub type Pool = MySqlPool;
 
 const SERVER_ID: &str = "server_id";
@@ -144,6 +146,7 @@ async fn main_() -> Result<()> {
             .wrap(TracingLogger::default())
             .configure(users::routes::init) // init user routes
             .configure(server::routes::init) // init app api routes
+            .configure(lists::routes::init) // init lists api routes
     })
     .bind((config.listen_ip.as_ref(), config.listen_port))?;
 

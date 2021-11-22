@@ -73,9 +73,10 @@ CREATE TABLE IF NOT EXISTS user_key
 CREATE TABLE IF NOT EXISTS last_synced
 (
     user_id BINARY(16) NOT NULL,
+    client BINARY(16) NOT NULL,
     date TIMESTAMP NOT NULL DEFAULT current_timestamp(),
     `type` INT NOT NULL,
-    PRIMARY KEY (user_id,`type`),
+    PRIMARY KEY (user_id,`type`,client),
     CONSTRAINT `fk_user_id_last_synced`
         FOREIGN KEY (user_id) REFERENCES users (uuid)
         ON DELETE CASCADE
@@ -165,8 +166,8 @@ CREATE TABLE IF NOT EXISTS deleted_list
 (
     user BINARY(16) NOT NULL,
     list BINARY(16) NOT NULL PRIMARY KEY,
-    deleted BIGINT UNSIGNED NOT NULL,
-    INDEX `u_deleted` (`user`,`deleted`),
+    `time` BIGINT UNSIGNED NOT NULL,
+    INDEX `u_deleted` (`user`,`time`),
     CONSTRAINT `fk_user_id_dellist`
         FOREIGN KEY (user) REFERENCES users (uuid)
         ON DELETE CASCADE
@@ -177,8 +178,8 @@ CREATE TABLE IF NOT EXISTS deleted_entry
 (
     list BINARY(16) NOT NULL,
     entry BINARY(16) NOT NULL PRIMARY KEY,
-    deleted BIGINT UNSIGNED NOT NULL,
-    INDEX `l_deleted` (`list`,`deleted`),
+    `time` BIGINT UNSIGNED NOT NULL,
+    INDEX `l_deleted` (`list`,`time`),
     CONSTRAINT `fk_list_id_delentry`
         FOREIGN KEY (list) REFERENCES lists (uuid)
         ON DELETE CASCADE
@@ -188,7 +189,7 @@ CREATE TABLE IF NOT EXISTS deleted_entry
 CREATE TABLE IF NOT EXISTS deleted_user
 (
     user BINARY(16) NOT NULL PRIMARY KEY,
-    deleted TIMESTAMP NOT NULL DEFAULT current_timestamp()
+    `time` TIMESTAMP NOT NULL DEFAULT current_timestamp()
 );
 
 CREATE TABLE IF NOT EXISTS settings
