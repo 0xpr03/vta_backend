@@ -103,9 +103,16 @@ pub async fn update_changed_lists(state: &AppState, mut data: ListChangedRequest
     sqlx::query(query_outdated.as_str()).execute(&mut transaction).await.context("removing outdated")?;
     trace!("Retrieving changes to send back");
     // resolve all changed entries we should send back
+    let sql_t;
     let stream = match last_synced {
-        Some(time) => sqlx::query_as::<_,ListChangedEntry>("SELECT uuid,name,name_a,name_b,changed,created FROM lists WHERE owner = ? AND changed > ?").bind(user).bind(time),
-        None => sqlx::query_as::<_,ListChangedEntry>("SELECT uuid,name,name_a,name_b,changed,created FROM lists WHERE owner = ?").bind(user)
+        Some(time) => {
+            sql_t = format!("SELECT uuid,name,name_a,name_b,changed,created FROM lists WHERE owner = ? AND changed > ? AND uuid NOT IN (SELECT uuid FROM `{}`)",table_name);
+            sqlx::query_as::<_,ListChangedEntry>(sql_t.as_str()).bind(user).bind(time)
+        },
+        None => {
+            sql_t = format!("SELECT uuid,name,name_a,name_b,changed,created FROM lists WHERE owner = ? AND uuid NOT IN (SELECT uuid FROM `{}`)",table_name);
+            sqlx::query_as::<_,ListChangedEntry>(sql_t.as_str()).bind(user)
+        }
     }.fetch(&mut transaction);
     let return_lists: Vec<ListChangedEntry> = stream.try_collect().await.context("requesting changes")?;
     trace!("Found {} changes to send back", return_lists.len());

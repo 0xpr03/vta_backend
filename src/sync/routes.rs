@@ -8,7 +8,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
         .service(list_sync_changed);
 }
 
-#[instrument(skip(id))]
+#[instrument(skip(id,reg,state))]
 #[post("/api/v1/sync/lists/deleted")]
 async fn list_sync_del(reg: web::Json<ListDeletedRequest>, id: Identity, state: AppState) -> Result<HttpResponse> {
     let identity = id.identity();

@@ -45,6 +45,14 @@ def gen_list():
         "created": random_date(d1,d2),
     }
 
+def gen_list_del():
+    d1 = datetime.datetime.strptime('1/1/2008 1:30 PM', '%m/%d/%Y %I:%M %p')
+    d2 = datetime.datetime.now()
+    return {
+        "list": str(uuid.uuid4()),
+        "time": random_date(d1,d2),
+    }
+
 def jwt_payload(server,user_id,sub) -> Dict[str, AnyStr]:
     return {
         "aud": [server["id"]],
@@ -119,9 +127,20 @@ def login_password(email,password):
         raise Exception(f"Password bind failed with {res.status_code}")
     return curSession
 
-def list_sync(session,client,lists):
+def list_sync_changed(session,client,lists):
     data = {'client': str(client), 'lists': lists}
     res = session.post(url+"/api/v1/sync/lists/changed",json=data)
+    if res.status_code != 200:
+        print(res)
+        print(f"response: {res.text}")
+        print(f"send data: {data}")
+        print(f"send raw: {res.request.body}")
+        raise Exception(f"List change sync failed with {res.status_code}")
+    return res.json()
+
+def list_sync_del(session,client,lists):
+    data = {'client': str(client), 'lists': lists}
+    res = session.post(url+"/api/v1/sync/lists/deleted",json=data)
     if res.status_code != 200:
         print(res)
         print(f"response: {res.text}")
@@ -154,9 +173,12 @@ print("syncing lists")
 client = uuid.uuid4()
 for x in range(10000):
     lists = [gen_list(),gen_list(),gen_list()]
+    lists_del = [gen_list_del(),gen_list_del(),gen_list_del()]
     #print(lists)
     startTime = time()
-    res = list_sync(session,client,lists)
+    list_sync_changed(session,client,lists)
+    list_sync_del(session,client,lists_del)
     executionTime = (time() - startTime)
     print('Execution time in seconds: ' + str(executionTime))
+
     #print(res)
