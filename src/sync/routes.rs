@@ -20,9 +20,9 @@ async fn list_sync_del(reg: web::Json<ListDeletedRequest>, id: Identity, state: 
     Ok(HttpResponse::Ok().json(response))
 }
 
-#[instrument(skip(id))]
+#[instrument(skip(id,reg,state))]
 #[post("/api/v1/sync/lists/changed")]
-async fn list_sync_changed(reg: web::Json<ListChangedRequest>, id: Identity, state: AppState, req: HttpRequest) -> Result<HttpResponse> {
+async fn list_sync_changed(reg: web::Json<ListChangedRequest>, id: Identity, state: AppState) -> Result<HttpResponse> {
     let identity = id.identity();
     trace!(?identity,"list sync changed request");
     let user = Uuid::parse_str(&identity.ok_or(ListError::NotAuthenticated)?)?;

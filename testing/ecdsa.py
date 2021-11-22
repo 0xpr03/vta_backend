@@ -17,9 +17,6 @@ privkey = "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0w
 def server_info():
     return requests.get(url+"/api/v1/server/info").json()
 
-server = server_info()
-user_id = uuid.uuid4()
-
 def generate_random_string(len_sep, no_of_blocks):
     random_string = ''
     random_str_seq = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -133,6 +130,10 @@ def list_sync(session,client,lists):
         raise Exception(f"List change sync failed with {res.status_code}")
     return res.json()
 
+
+server = server_info()
+user_id = uuid.uuid4()
+
 startTime = time()
 print("registering")
 register(server, pubkey, privkey, user_id)
@@ -151,5 +152,11 @@ executionTime = (time() - startTime)
 print('Execution time in seconds: ' + str(executionTime))
 print("syncing lists")
 client = uuid.uuid4()
-lists = [gen_list(),gen_list(),gen_list()]
-print(list_sync(session,client,lists))
+for x in range(10000):
+    lists = [gen_list(),gen_list(),gen_list()]
+    #print(lists)
+    startTime = time()
+    res = list_sync(session,client,lists)
+    executionTime = (time() - startTime)
+    print('Execution time in seconds: ' + str(executionTime))
+    #print(res)
