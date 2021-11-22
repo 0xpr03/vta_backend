@@ -1,3 +1,0 @@
-https://stackoverflow.com/a/61921362/3332686
-dann
-$env:OPENSSL_DIR="G:\vcpkg\installed\x64-windows-static"

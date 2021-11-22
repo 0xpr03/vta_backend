@@ -6,7 +6,6 @@ Sync backend for [VTA](https://github.com/0xpr03/VocableTrainer-Android)
 
 Requirements:
 - [rust](https://www.rust-lang.org/tools/install)
-- openssl
 
 Release build:  
 ```bash
@@ -31,11 +30,9 @@ Copy `config/default.toml` to `config/config.toml` and edit it.
 The following environment variables have to be set up for vscode:
 - mariadb database
 - DATABASE_URL for using the ORM checker
-- openssl setup for windows
 
 Example in windows terminal:
 ```powershell
-$env:OPENSSL_DIR="C:\vcpkg\installed\x64-windows-static"
 $env:DATABASE_URL="mysql://root@localhost/vta_sync"
 & "C:\Users\<User>\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Visual Studio Code\Visual Studio Code.lnk"
 ```
