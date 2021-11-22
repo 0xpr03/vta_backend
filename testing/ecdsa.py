@@ -31,6 +31,7 @@ def jwt_payload(server,user_id,sub) -> Dict[str, AnyStr]:
         "delete_after": int( time()+60*60 )
         }
 
+# register via JWT, app part
 def register(server, pubkey, privkey, user_id):
     payload = jwt_payload(server,user_id, "register")
     payload["name"] = "toaster"
@@ -49,6 +50,7 @@ def register(server, pubkey, privkey, user_id):
         print(res.headers)
         raise Exception(f"Register failed with {res.status_code}")
 
+# login via JWT; app part
 def login(server, privkey, user_id):
     curSession = requests.Session()
     payload = jwt_payload(server,user_id, "login")
@@ -72,6 +74,7 @@ def account_info(session):
         raise Exception(f"User info failed with {res.status_code}")
     return res.json()
 
+# bind password to account via JWT; app part
 def bind_password(session,email,password):
     data = {'email': email,'password': password}
     res = session.post(url+"/api/v1/account/register/password",json=data)
@@ -80,6 +83,7 @@ def bind_password(session,email,password):
         print(res.text)
         raise Exception(f"Password bind failed with {res.status_code}")
 
+# login via password web/app
 def login_password(email,password):
     curSession = requests.Session()
     data = {'email': email,'password': password}
