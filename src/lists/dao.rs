@@ -5,7 +5,7 @@ use chrono::Utc;
 use ormx::exports::futures::TryStreamExt;
 use rand::Rng;
 use rand::distributions::Alphanumeric;
-use sqlx::Executor;
+use sqlx::{Connection, Executor};
 
 use crate::prelude::*;
 use super::*;
@@ -49,7 +49,6 @@ pub async fn update_deleted_lists(state: &AppState, mut data: ListDeletedRequest
 #[instrument(skip(state,data))]
 pub async fn update_changed_lists(state: &AppState, mut data: ListChangedRequest, user: &Uuid) -> Result<Vec<ListChangedEntry>> {
     let t_now = Utc::now();
-
     let mut transaction = state.sql.begin().await?;
     
     let mut rng = rand::thread_rng();
@@ -63,7 +62,7 @@ pub async fn update_changed_lists(state: &AppState, mut data: ListChangedRequest
         LastSyncedKind::ListsChanged as i32, user, &data.client)
         .fetch_optional(&mut transaction).await?.map(|v|v.date);
 
-    transaction.execute(format!("CREATE TABLE {} (
+    transaction.execute(format!("CREATE TEMPORARY TABLE {} (
         uuid BINARY(16) NOT NULL PRIMARY KEY,
         name VARCHAR(127) NOT NULL,
         name_a VARCHAR(127) NOT NULL,
@@ -104,7 +103,6 @@ pub async fn update_changed_lists(state: &AppState, mut data: ListChangedRequest
     sqlx::query(query_outdated.as_str()).execute(&mut transaction).await.context("removing outdated")?;
 
     // resolve all changed entries we should send back
-    // let query_sendback = format!("DELETE FROM {} t WHERE t.uuid IN (SELECT uuid FROM lists l WHERE l.uuid = t.uuid AND l.changed >= t.changed)",table_name);
     let stream = match last_synced {
         Some(time) => sqlx::query_as::<_,ListChangedEntry>("SELECT uuid,name,name_a,name_b,changed,created FROM lists WHERE owner = ? AND time > ?").bind(user).bind(time),
         None => sqlx::query_as::<_,ListChangedEntry>("SELECT uuid,name,name_a,name_b,changed,created FROM lists WHERE owner = ?").bind(user)
@@ -120,6 +118,8 @@ pub async fn update_changed_lists(state: &AppState, mut data: ListChangedRequest
     sqlx::query!("INSERT INTO last_synced (user_id,client,type,date) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE date=VALUES(date)",
         user,&data.client,LastSyncedKind::ListsChanged as i32,t_now)
         .execute(&mut transaction).await.context("updating sync time")?;
+    
+    transaction.commit().await?;
 
     Ok(return_lists)
 }
