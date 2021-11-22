@@ -88,6 +88,8 @@ CREATE TABLE IF NOT EXISTS lists
     owner BINARY(16) NOT NULL,
     uuid BINARY(16) NOT NULL PRIMARY KEY,
     name VARCHAR(127) NOT NULL,
+    name_a VARCHAR(127) NOT NULL,
+    name_b VARCHAR(127) NOT NULL,
     changed BIGINT UNSIGNED NOT NULL,
     created BIGINT UNSIGNED NOT NULL,
     INDEX `o_changed` (`owner`,`changed`),

@@ -5,9 +5,9 @@ use crate::prelude::*;
 
 pub enum LastSyncedKind {
     ListsDeleted = 1,
-    Lists = 2,
+    ListsChanged = 2,
     EntriesDeleted = 3,
-    Entries = 4,
+    EntriesChanged = 4,
 }
 
 impl TryFrom<i32> for LastSyncedKind {
@@ -17,9 +17,9 @@ impl TryFrom<i32> for LastSyncedKind {
         use LastSyncedKind::*;
         match v {
             x if x == ListsDeleted as i32 => Ok(ListsDeleted),
-            x if x == Lists as i32 => Ok(Lists),
+            x if x == ListsChanged as i32 => Ok(ListsChanged),
             x if x == EntriesDeleted as i32 => Ok(EntriesDeleted),
-            x if x == Entries as i32 => Ok(Entries),
+            x if x == EntriesChanged as i32 => Ok(EntriesChanged),
             _ => Err(()),
         }
     }
@@ -48,3 +48,31 @@ impl PartialEq for ListDeleteEntry {
     }
 }
 impl Eq for ListDeleteEntry {}
+
+#[derive(Debug, Deserialize)]
+pub struct ListChangedRequest {
+    pub client: Uuid,
+    pub lists: Vec<ListChangedEntry>,
+}
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct ListChangedEntry {
+    pub uuid: Uuid,
+    pub name: String,
+    pub name_a: String,
+    pub name_b: String,
+    pub changed: Timestamp,
+    pub created: Timestamp,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ListChangedResponse {
+    pub lists: Vec<ListChangedEntry>,
+    pub failures: Vec<EntrySyncFailure>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct EntrySyncFailure {
+    pub id: Uuid,
+    pub error: String,
+}
