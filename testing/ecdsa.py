@@ -34,7 +34,7 @@ def random_date(start, end):
     int_delta = (delta.days * 24 * 60 * 60) + delta.seconds
     random_second = random.randrange(int_delta)
     res = start + datetime.timedelta(seconds=random_second)
-    return res.isoformat()+"+00:00"
+    return res.isoformat()
 
 def gen_list():
     d1 = datetime.datetime.strptime('1/1/2008 1:30 PM', '%m/%d/%Y %I:%M %p')

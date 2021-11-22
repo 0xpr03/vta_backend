@@ -1,6 +1,6 @@
-use chrono::{DateTime, Utc};
+use chrono::NaiveDateTime;
 
-pub type Timestamp = DateTime<Utc>;
+pub type Timestamp = NaiveDateTime;
 pub use tracing::*;
 pub use uuid::Uuid;
 pub use color_eyre::eyre::Context;

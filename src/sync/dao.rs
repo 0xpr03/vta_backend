@@ -13,7 +13,7 @@ use super::models::*;
 
 #[instrument(skip(state,data))]
 pub async fn update_deleted_lists(state: &AppState, mut data: ListDeletedRequest, user: &Uuid) -> Result<HashSet<ListDeleteEntry>> {
-    let t_now = Utc::now();
+    let t_now = Utc::now().naive_utc();
 
     let mut transaction = state.sql.begin().await?;
     
@@ -48,7 +48,7 @@ pub async fn update_deleted_lists(state: &AppState, mut data: ListDeletedRequest
 
 #[instrument(skip(state,data))]
 pub async fn update_changed_lists(state: &AppState, mut data: ListChangedRequest, user: &Uuid) -> Result<Vec<ListChangedEntry>> {
-    let t_now = Utc::now();
+    let t_now = Utc::now().naive_utc();
     let mut transaction = state.sql.begin().await?;
     
     let mut rng = rand::thread_rng();
@@ -62,7 +62,7 @@ pub async fn update_changed_lists(state: &AppState, mut data: ListChangedRequest
         LastSyncedKind::ListsChanged as i32, user, &data.client)
         .fetch_optional(&mut transaction).await?.map(|v|v.date);
 
-    transaction.execute(format!("CREATE TEMPORARY TABLE {} (
+    transaction.execute(format!("CREATE TABLE {} (
         uuid BINARY(16) NOT NULL PRIMARY KEY,
         name VARCHAR(127) NOT NULL,
         name_a VARCHAR(127) NOT NULL,
