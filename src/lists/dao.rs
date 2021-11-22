@@ -5,7 +5,7 @@ use chrono::Utc;
 use ormx::exports::futures::TryStreamExt;
 use rand::Rng;
 use rand::distributions::Alphanumeric;
-use sqlx::{Connection, Executor};
+use sqlx::Executor;
 
 use crate::prelude::*;
 use super::*;

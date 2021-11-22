@@ -1,5 +1,5 @@
 use actix_identity::Identity;
-use actix_web::{HttpRequest, HttpResponse, get, post, web};
+use actix_web::{HttpRequest, HttpResponse, post, web};
 use super::list::*;
 use super::*;
 
