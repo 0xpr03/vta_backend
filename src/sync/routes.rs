@@ -1,6 +1,6 @@
 use actix_identity::Identity;
 use actix_web::{HttpRequest, HttpResponse, post, web};
-use super::list::*;
+use super::models::*;
 use super::*;
 
 pub fn init(cfg: &mut web::ServiceConfig) {

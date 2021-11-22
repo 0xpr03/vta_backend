@@ -13,7 +13,7 @@ mod config;
 mod users;
 mod state;
 mod server;
-mod lists;
+mod sync;
 mod prelude;
 
 pub type Pool = MySqlPool;
@@ -146,7 +146,7 @@ async fn main_() -> Result<()> {
             .wrap(TracingLogger::default())
             .configure(users::routes::init) // init user routes
             .configure(server::routes::init) // init app api routes
-            .configure(lists::routes::init) // init lists api routes
+            .configure(sync::routes::init) // init lists api routes
     })
     .bind((config.listen_ip.as_ref(), config.listen_port))?;
 

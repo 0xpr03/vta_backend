@@ -9,7 +9,7 @@ use sqlx::Executor;
 
 use crate::prelude::*;
 use super::*;
-use super::list::*;
+use super::models::*;
 
 #[instrument(skip(state,data))]
 pub async fn update_deleted_lists(state: &AppState, mut data: ListDeletedRequest, user: &Uuid) -> Result<HashSet<ListDeleteEntry>> {

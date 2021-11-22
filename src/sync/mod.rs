@@ -3,7 +3,7 @@ use thiserror::Error;
 use crate::prelude::*;
 
 pub mod routes;
-pub mod list;
+pub mod models;
 pub mod dao;
 
 #[derive(Error, Debug)]
