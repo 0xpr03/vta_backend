@@ -1,7 +1,7 @@
 use actix_web::{HttpResponse, get, web};
 use time::OffsetDateTime;
-use tracing::{info, instrument};
-use crate::{server::ServerInfo, state::AppState};
+use crate::server::ServerInfo;
+use crate::prelude::*;
 
 #[instrument]
 #[get("/api/v1/server/info")]

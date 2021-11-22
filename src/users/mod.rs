@@ -1,6 +1,6 @@
 use actix_web::{HttpResponse, ResponseError};
 use thiserror::Error;
-use tracing::{trace, warn};
+use crate::prelude::*;
 
 pub mod routes;
 pub mod user;

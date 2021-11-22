@@ -13,7 +13,7 @@ mod config;
 mod users;
 mod state;
 mod server;
-
+mod prelude;
 pub type Pool = MySqlPool;
 
 const SERVER_ID: &str = "server_id";

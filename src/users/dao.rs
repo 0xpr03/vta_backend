@@ -2,11 +2,9 @@ use std::convert::TryInto;
 use std::str::FromStr;
 
 use ormx::Insert;
-use tracing::*;
-use uuid::Uuid;
+use crate::prelude::*;
 use super::user::*;
 use super::Result;
-use crate::state::AppState;
 
 // no async traits and I'd like to avoid async_trait
 #[instrument]

@@ -3,7 +3,6 @@ use actix_rt::task;
 use actix_web::HttpRequest;
 use actix_web::{HttpResponse, get, post, web};
 use argon2::{self, PasswordHasher, PasswordVerifier};
-use color_eyre::eyre::Context;
 use jsonwebtoken::Algorithm;
 use jsonwebtoken::DecodingKey;
 use jsonwebtoken::TokenData;
@@ -12,16 +11,11 @@ use jsonwebtoken::decode;
 use ormx::{Insert, Table};
 use rand_core::OsRng;
 use serde::de::DeserializeOwned;
-use tracing::*;
-use uuid::Uuid;
-
-use crate::state::AppState;
-
-use super::dao;
-use super::AuthError;
+use crate::prelude::*;
 use std::collections::HashSet;
+
+use super::*;
 use super::user::*;
-use super::Result;
 
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(app_register)

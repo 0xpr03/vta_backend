@@ -1,9 +1,8 @@
 use std::fmt;
 
-use serde::{Deserialize, Serialize};
 use sqlx::types::{chrono::{DateTime, Utc}};
 use strum::EnumString;
-use uuid::Uuid;
+use crate::prelude::*;
 
 #[derive(Debug, ormx::Table, Serialize)]
 #[ormx(table = "users", id = uuid, insertable)]
@@ -18,7 +17,7 @@ pub struct User {
     // don't include this field into `InsertUser` since it has a default value
     // generate `User::set_last_login(Option<NaiveDateTime>) -> Result<()>`
     #[ormx(default, set)]
-    pub last_seen: DateTime<Utc>,
+    pub last_seen: Timestamp,
     pub delete_after: Option<u32>,
 }
 

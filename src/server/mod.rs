@@ -1,9 +1,7 @@
 use actix_web::{HttpResponse, ResponseError};
-use serde::Serialize;
 use sqlx::{MySqlPool, Row};
 use thiserror::Error;
-use tracing::trace;
-use uuid::Uuid;
+use crate::prelude::*;
 
 pub mod routes;
 
