@@ -8,7 +8,7 @@ use jsonwebtoken::DecodingKey;
 use jsonwebtoken::TokenData;
 use jsonwebtoken::Validation;
 use jsonwebtoken::decode;
-use ormx::{Insert, Table};
+use ormx::Insert;
 use rand_core::OsRng;
 use serde::de::DeserializeOwned;
 use crate::prelude::*;

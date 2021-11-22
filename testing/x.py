@@ -3,7 +3,10 @@ import sys
 from urllib.parse import urlparse
 import os
 
-# Connect to MariaDB Platform
+# CI database setup script
+# otherwise we would need to
+# a) provide the sqlx-cli tool for migrations or
+# b) compile without database checking to run migrations first
 
 #DATABASE_URL="mysql://root@localhost/vta_sync"
 db_conn_url = urlparse(os.environ['DATABASE_URL'])
