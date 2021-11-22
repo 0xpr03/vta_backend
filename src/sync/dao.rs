@@ -43,6 +43,8 @@ pub async fn update_deleted_lists(state: &AppState, mut data: ListDeletedRequest
         user,&data.client,LastSyncedKind::ListsDeleted as i32,t_now)
         .execute(&mut transaction).await.context("updating sync time")?;
 
+    transaction.commit().await?;
+
     Ok(return_lists)
 }
 
