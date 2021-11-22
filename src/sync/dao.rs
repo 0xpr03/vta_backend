@@ -62,7 +62,7 @@ pub async fn update_changed_lists(state: &AppState, mut data: ListChangedRequest
         LastSyncedKind::ListsChanged as i32, user, &data.client)
         .fetch_optional(&mut transaction).await?.map(|v|v.date);
 
-    transaction.execute(format!("CREATE TABLE {} (
+    transaction.execute(format!("CREATE TEMPORARY TABLE {} (
         uuid BINARY(16) NOT NULL PRIMARY KEY,
         name VARCHAR(127) NOT NULL,
         name_a VARCHAR(127) NOT NULL,
