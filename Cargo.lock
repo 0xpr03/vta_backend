@@ -2825,7 +2825,6 @@ dependencies = [
  "sqlx",
  "strum",
  "thiserror",
- "time 0.3.4",
  "tracing",
  "tracing-actix-web",
  "tracing-bunyan-formatter",

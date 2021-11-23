@@ -46,6 +46,6 @@ pub async fn set_setting(pool: &MySqlPool, key: &str, value: &str, update: bool)
 
 #[derive(Debug,Serialize)]
 struct ServerInfo {
-    time: i64,
+    time: Timestamp,
     id: Uuid,
 }

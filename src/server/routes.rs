@@ -1,5 +1,5 @@
 use actix_web::{HttpResponse, get, web};
-use time::OffsetDateTime;
+use chrono::Utc;
 use crate::server::ServerInfo;
 use crate::prelude::*;
 
@@ -9,7 +9,7 @@ async fn server_info(state: AppState) -> HttpResponse {
     info!("acc register request");
     let info = ServerInfo {
         id: state.id,
-        time: OffsetDateTime::now_utc().unix_timestamp(),
+        time: Utc::now().naive_utc(),
     };
     HttpResponse::Ok().json(info)
 }
