@@ -76,3 +76,28 @@ pub struct EntrySyncFailure {
     pub id: Uuid,
     pub error: String,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct EntryDeletedRequest {
+    pub client: Uuid,
+    pub entries: Vec<EntryDeleteEntry>,
+}
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct EntryDeleteEntry {
+    pub list: Uuid,
+    pub entry: Uuid,
+    pub time: Timestamp
+}
+
+impl Hash for EntryDeleteEntry {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.entry.hash(state);
+    }
+}
+impl PartialEq for EntryDeleteEntry {
+    fn eq(&self, other: &Self) -> bool {
+        self.entry == other.entry
+    }
+}
+impl Eq for EntryDeleteEntry {}

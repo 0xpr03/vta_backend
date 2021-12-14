@@ -100,6 +100,19 @@ CREATE TABLE IF NOT EXISTS lists
         ON UPDATE RESTRICT
 );
 
+CREATE TABLE IF NOT EXISTS list_permissions
+(
+    user BINARY(16) NOT NULL,
+    list BINARY(16) NOT NULL,
+    `change` BOOLEAN NOT NULL,
+    reshare BOOLEAN NOT NULL,
+    PRIMARY KEY (user,list),
+    CONSTRAINT `fk_user_id_list_permissions`
+        FOREIGN KEY (user) REFERENCES users (uuid)
+        ON DELETE CASCADE
+        ON UPDATE RESTRICT
+);
+
 CREATE TABLE IF NOT EXISTS category
 (
     owner BINARY(16) NOT NULL,
@@ -170,6 +183,7 @@ CREATE TABLE IF NOT EXISTS deleted_list
     list BINARY(16) NOT NULL PRIMARY KEY,
     `time` DATETIME NOT NULL,
     INDEX `u_deleted` (`user`,`time`),
+    INDEX (`user`,`list`),
     CONSTRAINT `fk_user_id_dellist`
         FOREIGN KEY (user) REFERENCES users (uuid)
         ON DELETE CASCADE

@@ -53,6 +53,20 @@ def gen_list_del():
         "time": random_date(d1,d2),
     }
 
+def gen_entry_del(list):
+    d1 = datetime.datetime.strptime('1/1/2008 1:30 PM', '%m/%d/%Y %I:%M %p')
+    d2 = datetime.datetime.now()
+    return {
+        "list": str(list["uuid"]),
+        "time": random_date(d1,d2),
+        "entry": str(uuid.uuid4())
+    }
+
+def gen_entry_del_from_lists(lists):
+    lst = random.randrange(0,len(lists))
+    return gen_entry_del(lists[lst])
+
+
 def jwt_payload(server,user_id,sub) -> Dict[str, AnyStr]:
     return {
         "aud": [server["id"]],
@@ -149,6 +163,17 @@ def list_sync_del(session,client,lists):
         raise Exception(f"List change sync failed with {res.status_code}")
     return res.json()
 
+def entry_sync_del(session,client,entries):
+    data = {'client': str(client), 'entries': entries}
+    res = session.post(url+"/api/v1/sync/entries/deleted",json=data)
+    if res.status_code != 200:
+        print(res)
+        print(f"response: {res.text}")
+        print(f"send data: {data}")
+        print(f"send raw: {res.request.body}")
+        raise Exception(f"List change sync failed with {res.status_code}")
+    return res.json()
+
 
 server = server_info()
 user_id = uuid.uuid4()
@@ -171,12 +196,14 @@ executionTime = (time() - startTime)
 print('Execution time in seconds: ' + str(executionTime))
 print("syncing lists")
 client = uuid.uuid4()
-for x in range(10000):
+for x in range(1):
     lists = [gen_list(),gen_list(),gen_list()]
     lists_del = [gen_list_del(),gen_list_del(),gen_list_del()]
+    entries_del = [gen_entry_del_from_lists(lists),gen_entry_del_from_lists(lists),gen_entry_del_from_lists(lists)]
     #print(lists)
     startTime = time()
     list_sync_changed(session,client,lists)
+    entry_sync_del(session,client,entries_del)
     list_sync_del(session,client,lists_del)
     executionTime = (time() - startTime)
     print('Execution time in seconds: ' + str(executionTime))
