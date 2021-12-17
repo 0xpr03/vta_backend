@@ -27,6 +27,8 @@ const SECURE_COOKIE: bool = true;
 
 fn init_telemetry() {
     let app_name = env!("CARGO_BIN_NAME");
+    // https://github.com/open-telemetry/opentelemetry-rust/issues/676
+    std::env::set_var("OTEL_BSP_MAX_EXPORT_BATCH_SIZE", "25");
 
     // Start a new Jaeger trace pipeline.
     // Spans are exported in batch - recommended setup for a production application.

@@ -11,7 +11,7 @@ Release build:
 ```bash
 cargo build --release
 ```
-Final files are insize `target/release`
+Final files are inside `target/release`
 
 ## Running
 
