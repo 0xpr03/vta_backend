@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use std::iter::repeat;
 
 use chrono::Utc;
@@ -148,6 +148,8 @@ pub async fn update_changed_lists(state: &AppState, mut data: ListChangedRequest
     sqlx::query!("INSERT INTO last_synced (user_id,client,type,date) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE date=VALUES(date)",
         user,&data.client,LastSyncedKind::ListsChanged as i32,t_now)
         .execute(&mut transaction).await.context("updating sync time")?;
+
+    transaction.execute(format!("DROP TABLE {}",table_name).as_str()).await.context("dropping temp table")?;
     
     transaction.commit().await?;
 
@@ -237,7 +239,7 @@ pub async fn update_deleted_entries(state: &AppState, mut data: EntryDeletedRequ
         .bind(user)
         .bind(user)
         .execute(&mut transaction).await.context("removing entries without list permissions")?;
-    trace!(affected=sql_res.rows_affected(),"removed entries without permission / existing list");  
+    trace!(affected=sql_res.rows_affected(),"removed entries without permission / existing list");
 
     // insert remaining new data from temp table into deleted_entry
     let query_upsert = format!("INSERT INTO deleted_entry (entry,list,time)
@@ -255,7 +257,162 @@ pub async fn update_deleted_entries(state: &AppState, mut data: EntryDeletedRequ
         user,&data.client,LastSyncedKind::EntriesDeleted as i32,t_now)
         .execute(&mut transaction).await.context("updating last_synced time")?;
 
+    transaction.execute(format!("DROP TABLE {}",table_name).as_str()).await.context("dropping temp table")?;
+
     transaction.commit().await?;
 
     Ok(return_lists)
+}
+
+//#[instrument(skip(state,data))]
+pub async fn update_changed_entries(state: &AppState, mut data: EntryChangedRequest, user: &Uuid) -> Result<Vec<EntryChangedEntry>> {
+    let t_now = Utc::now().naive_utc();
+
+    let mut transaction = state.sql.begin().await?;
+    
+    let last_synced: Option<Timestamp> = sqlx::query!("SELECT date FROM last_synced WHERE `type` = ? AND user_id = ? AND client = ? FOR UPDATE",
+        LastSyncedKind::EntriesChanged as i32, user, &data.client)
+        .fetch_optional(&mut transaction).await.context("selecting last_synced")?.map(|v|v.date);
+
+    // fetch data to return
+    // don't request meanings already, we can do that after checking for newer data in the payload
+    let time_addition = if last_synced.is_some() {
+        "AND e.changed > ?"
+    } else {
+        ""
+    };
+    let sql_t = format!("SELECT e.list,e.uuid,e.changed,tip FROM entries e
+    JOIN list_permissions p ON e.list = p.list
+    WHERE p.user = ? {time}
+    UNION
+    SELECT e.list,e.uuid,e.changed,tip FROM entries e
+    JOIN lists l ON e.list = l.uuid
+    WHERE l.owner = ? {time}",time=time_addition);
+    let q = sqlx::query_as::<_,EntryChangedEntryBlank>(sql_t.as_str());
+    let stream = match last_synced {
+        Some(time) => {
+            q.bind(user).bind(time).bind(user).bind(time)
+        },
+        None => {
+            q.bind(user).bind(user)
+        }
+    }.fetch(&mut transaction);
+    let _raw_return_entries: Vec<EntryChangedEntryBlank> = stream.try_collect().await.context("requesting changes")?;
+    let mut raw_return_entries: HashMap<Uuid, EntryChangedEntryBlank> = _raw_return_entries.into_iter().map(|v|(v.uuid,v)).collect();
+    trace!("Found {} changes to send back", raw_return_entries.len());
+
+    let mut rng = rand::thread_rng();
+    let table_name: String = format!("t_{}",repeat(())
+        .map(|()| rng.sample(Alphanumeric))
+        .map(char::from)
+        .take(7)
+        .collect::<String>());
+    transaction.execute(format!("CREATE TEMPORARY TABLE {} (
+        list BINARY(16) NOT NULL,
+        uuid BINARY(16) NOT NULL,
+        changed DATETIME NOT NULL,
+        tip VARCHAR(127),
+        PRIMARY KEY (list,uuid),
+        INDEX (list),
+        INDEX (uuid),
+        INDEX (changed),
+        INDEX (uuid,changed)
+    )",table_name).as_str()).await.context("ceating temp table")?;
+    trace!("created temp table");
+
+    // insert received entries into temp table
+    let sql_t = format!("INSERT INTO `{tbl}` (list,uuid,changed,tip) VALUES(?,?,?,?)
+        ON DUPLICATE KEY UPDATE changed=VALUES(changed), tip=VALUES(tip)",tbl= table_name);
+    for v in data.entries.iter_mut() {
+        if v.changed > t_now {
+            info!(%v.changed,%t_now,"ignoring change date in future");
+            //v.changed = t_now;
+            // TODO: track failures for sendback
+            continue;
+        }
+        
+        // verify we don't send back outdated stuff
+        if let Some(ret_v) = raw_return_entries.get(&v.uuid) {
+            if ret_v.changed > v.changed {
+                raw_return_entries.remove(&v.uuid);
+            }
+        }
+        sqlx::query(sql_t.as_str())
+            .bind(v.list)
+            .bind(v.uuid)
+            .bind(v.changed)
+            .bind(&v.tip)
+            .execute(&mut transaction).await.context("inserting data to temp table")?;
+    }
+    // remove all non-existing/non-owner lists from temp table
+    let sqlt_del_nonowned = format!("DELETE FROM `{tbl}` WHERE list NOT IN (
+        SELECT l.uuid FROM lists l
+        WHERE `{tbl}`.list = l.uuid AND l.owner = ?
+        UNION
+        SELECT p.list FROM list_permissions p
+        WHERE p.list = `{tbl}`.list AND p.`change` = true AND p.user = ?)", tbl = table_name);
+    let sql_res = sqlx::query(sqlt_del_nonowned.as_str())
+        .bind(user)
+        .bind(user)
+        .execute(&mut transaction).await.context("removing entries without list permissions")?;
+    trace!(affected=sql_res.rows_affected(),"removed entries without permission / existing list");
+
+    // remove outdated
+    let query_outdated = format!("DELETE FROM `{tbl}` WHERE uuid IN
+        (SELECT uuid FROM entries e WHERE e.`uuid` = `{tbl}`.`uuid` AND e.`changed` >= `{tbl}`.`changed` FOR UPDATE);",tbl = table_name);
+    let res = sqlx::query(query_outdated.as_str()).execute(&mut transaction).await.context("removing outdated")?;
+    trace!(affected=res.rows_affected(),"removed outdated data");
+
+    // insert entries back
+    let query_upsert = format!("INSERT INTO entries (list,uuid,changed,tip)
+        SELECT list,uuid,changed,tip FROM `{tbl}`
+        ON DUPLICATE KEY UPDATE changed=VALUES(changed), tip=VALUES(tip)",tbl=table_name);
+    let res = sqlx::query(query_upsert.as_str()).execute(&mut transaction).await.context("upserting entries")?;
+    trace!(affected=res.rows_affected(),"inserted into entries");
+    // TODO: insert meanings
+    // retrieve entries for which we need to update their meanings
+    let q_fetch = format!("SELECT uuid FROM `{tbl}`",tbl = table_name);
+    let to_update: Vec<FetchUuid> = sqlx::query_as::<_,FetchUuid>(q_fetch.as_str())
+        .fetch(&mut transaction).try_collect().await.context("fetching entries to meaning update")?;
+    let to_update: HashSet<Uuid> = to_update.into_iter().map(|v|v.uuid).collect();
+    trace!(amount=to_update.len(),"retrieved entries to update meanings");
+    
+    // remove all meanings for entries
+    let query_delete_meanings = format!("DELETE FROM entry_meaning WHERE entry IN (SELECT uuid FROM `{tbl}`)",tbl=table_name);
+    let res = sqlx::query(query_delete_meanings.as_str()).execute(&mut transaction).await.context("deleting meanings")?;
+    trace!(affected=res.rows_affected(),"deleted old meanings");
+
+    // now insert the new meanings
+    let mut meanings_ins = 0;
+    for e in data.entries.into_iter() {
+        if to_update.contains(&e.uuid) {
+            for m in e.meanings.into_iter() {
+                let res = sqlx::query("INSERT INTO entry_meaning (entry,value,is_a) VALUES(?,?,?)")
+                .bind(e.uuid)
+                .bind(m.value)
+                .bind(m.is_a)
+                .execute(&mut transaction).await.context("inserting meanings")?;
+                meanings_ins += res.rows_affected();
+            }
+        }
+    }
+    trace!(affected=meanings_ins,"inserted meanings");
+
+    // now fetch the meanings
+    let mut return_entries = Vec::with_capacity(raw_return_entries.len());
+    for (_,e) in raw_return_entries.into_iter() {
+        let meanings: Vec<Meaning> = sqlx::query_as::<_,Meaning>("SELECT value,is_a FROM entry_meaning WHERE entry = ?")
+            .bind(e.uuid).fetch(&mut transaction).try_collect().await.context("fetching meanings")?;
+        return_entries.push(e.into_full(meanings));
+    }
+
+    sqlx::query!("INSERT INTO last_synced (user_id,client,type,date) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE date=VALUES(date)",
+    user,&data.client,LastSyncedKind::EntriesChanged as i32,t_now)
+    .execute(&mut transaction).await.context("updating last_synced time")?;
+
+    transaction.execute(format!("DROP TABLE {}",table_name).as_str()).await.context("dropping temp table")?;
+
+    transaction.commit().await?;
+
+    Ok(return_entries)
 }

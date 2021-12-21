@@ -101,3 +101,64 @@ impl PartialEq for EntryDeleteEntry {
     }
 }
 impl Eq for EntryDeleteEntry {}
+
+#[derive(Debug, Deserialize)]
+pub struct EntryChangedRequest {
+    pub client: Uuid,
+    pub entries: Vec<EntryChangedEntry>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EntryChangedEntry {
+    pub list: Uuid,
+    pub uuid: Uuid,
+    pub tip: String,
+    pub changed: Timestamp,
+    pub meanings: Vec<Meaning>,
+}
+
+impl Hash for EntryChangedEntry {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.uuid.hash(state);
+    }
+}
+impl PartialEq for EntryChangedEntry {
+    fn eq(&self, other: &Self) -> bool {
+        self.uuid == other.uuid
+    }
+}
+impl Eq for EntryChangedEntry {}
+
+// raw entry from DB without meanings
+#[derive(Debug, sqlx::FromRow)]
+pub struct EntryChangedEntryBlank {
+    pub list: Uuid,
+    pub uuid: Uuid,
+    pub changed: Timestamp,
+    pub tip: String,
+}
+
+impl EntryChangedEntryBlank {
+    pub fn into_full(self, meanings: Vec<Meaning>) -> EntryChangedEntry {
+        EntryChangedEntry {
+            list: self.list,
+            uuid: self.uuid,
+            tip: self.tip,
+            changed: self.changed,
+            meanings,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Meaning {
+    pub value: String,
+    pub is_a: bool,
+}
+
+/// Hack for missing FromRow for Uuid type
+/// otherwise we'd need query_as<(Uuid,)>
+#[derive(Debug, sqlx::FromRow, Eq,PartialEq,Hash)]
+pub struct FetchUuid {
+    pub uuid: Uuid
+}

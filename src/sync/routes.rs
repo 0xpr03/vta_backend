@@ -6,7 +6,8 @@ use super::*;
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(list_sync_del)
         .service(list_sync_changed)
-        .service(entry_sync_del);
+        .service(entry_sync_del)
+        .service(entry_sync_changed);
 }
 
 #[instrument(skip(id,reg,state))]
@@ -40,5 +41,17 @@ async fn entry_sync_del(reg: web::Json<EntryDeletedRequest>, id: Identity, state
     let data = reg.into_inner();
 
     let response = dao::update_deleted_entries(&state, data, &user).await?;
+    Ok(HttpResponse::Ok().json(response))
+}
+
+#[instrument(skip(id,reg,state))]
+#[post("/api/v1/sync/entries/changed")]
+async fn entry_sync_changed(reg: web::Json<EntryChangedRequest>, id: Identity, state: AppState) -> Result<HttpResponse> {
+    let identity = id.identity();
+    trace!(?identity,"entry sync changed request");
+    let user = Uuid::parse_str(&identity.ok_or(ListError::NotAuthenticated)?)?;
+    let data = reg.into_inner();
+
+    let response = dao::update_changed_entries(&state, data, &user).await?;
     Ok(HttpResponse::Ok().json(response))
 }

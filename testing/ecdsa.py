@@ -53,6 +53,27 @@ def gen_list_del():
         "time": random_date(d1,d2),
     }
 
+def gen_entry_change(list):
+    d1 = datetime.datetime.strptime('1/1/2008 1:30 PM', '%m/%d/%Y %I:%M %p')
+    d2 = datetime.datetime.now()
+    meanings = []
+    for i in range(0,random.randint(1,10)):
+        meanings.append({"value": generate_random_string(8,1), "is_a": random.choice([True, False])})
+    return {
+        "list": str(list["uuid"]),
+        "uuid": str(uuid.uuid4()),
+        "tip": generate_random_string(8,1),
+        "changed": random_date(d1,d2),
+        "meanings": meanings,
+    }
+
+def gen_list_entries(lists):
+    lst = random.randrange(0,len(lists))
+    entries = []
+    for l in lists:
+        entries.append(gen_entry_change(l))
+    return entries
+
 def gen_entry_del(list):
     d1 = datetime.datetime.strptime('1/1/2008 1:30 PM', '%m/%d/%Y %I:%M %p')
     d2 = datetime.datetime.now()
@@ -174,6 +195,17 @@ def entry_sync_del(session,client,entries):
         raise Exception(f"List change sync failed with {res.status_code}")
     return res.json()
 
+def entry_sync_changed(session,client,entries):
+    data = {'client': str(client), 'entries': entries}
+    res = session.post(url+"/api/v1/sync/entries/changed",json=data)
+    if res.status_code != 200:
+        print(res)
+        print(f"response: {res.text}")
+        print(f"send data: {data}")
+        print(f"send raw: {res.request.body}")
+        raise Exception(f"List change sync failed with {res.status_code}")
+    return res.json()
+
 
 server = server_info()
 user_id = uuid.uuid4()
@@ -200,10 +232,12 @@ for x in range(1):
     lists = [gen_list(),gen_list(),gen_list()]
     lists_del = [gen_list_del(),gen_list_del(),gen_list_del()]
     entries_del = [gen_entry_del_from_lists(lists),gen_entry_del_from_lists(lists),gen_entry_del_from_lists(lists)]
+    entries = gen_list_entries(lists)
     #print(lists)
     startTime = time()
     list_sync_changed(session,client,lists)
     entry_sync_del(session,client,entries_del)
+    entry_sync_changed(session,client,entries)
     list_sync_del(session,client,lists_del)
     executionTime = (time() - startTime)
     print('Execution time in seconds: ' + str(executionTime))

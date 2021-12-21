@@ -94,6 +94,9 @@ CREATE TABLE IF NOT EXISTS lists
     created DATETIME NOT NULL,
     INDEX `o_changed` (`owner`,`changed`),
     INDEX `o_created` (`owner`,`created`),
+    INDEX (`uuid`,`owner`),
+    INDEX (uuid,changed),
+    INDEX (`owner`, changed, uuid),
     CONSTRAINT `fk_user_id_list`
         FOREIGN KEY (owner) REFERENCES users (uuid)
         ON DELETE CASCADE
@@ -106,7 +109,9 @@ CREATE TABLE IF NOT EXISTS list_permissions
     list BINARY(16) NOT NULL,
     `change` BOOLEAN NOT NULL,
     reshare BOOLEAN NOT NULL,
-    PRIMARY KEY (user,list),
+    PRIMARY KEY (list,user),
+    INDEX (list),
+    INDEX (user,list,`change`),
     CONSTRAINT `fk_user_id_list_permissions`
         FOREIGN KEY (user) REFERENCES users (uuid)
         ON DELETE CASCADE
@@ -148,6 +153,8 @@ CREATE TABLE IF NOT EXISTS entries
     changed DATETIME NOT NULL,
     tip VARCHAR(127),
     INDEX `l_changed` (`list`,`changed`),
+    INDEX (`uuid`,`changed`),
+    INDEX (list),
     CONSTRAINT `fk_list_id_entry`
         FOREIGN KEY (list) REFERENCES lists (uuid)
         ON DELETE CASCADE
@@ -162,7 +169,8 @@ CREATE TABLE IF NOT EXISTS entry_meaning
     CONSTRAINT `fk_user_id_meaning`
         FOREIGN KEY (entry) REFERENCES entries (uuid)
         ON DELETE CASCADE
-        ON UPDATE RESTRICT
+        ON UPDATE RESTRICT,
+    INDEX(entry)
 );
 
 CREATE TABLE IF NOT EXISTS deleted_category
@@ -184,6 +192,7 @@ CREATE TABLE IF NOT EXISTS deleted_list
     `time` DATETIME NOT NULL,
     INDEX `u_deleted` (`user`,`time`),
     INDEX (`user`,`list`),
+    INDEX (list),
     CONSTRAINT `fk_user_id_dellist`
         FOREIGN KEY (user) REFERENCES users (uuid)
         ON DELETE CASCADE
@@ -196,6 +205,7 @@ CREATE TABLE IF NOT EXISTS deleted_entry
     entry BINARY(16) NOT NULL PRIMARY KEY,
     `time` DATETIME NOT NULL,
     INDEX `l_deleted` (`list`,`time`),
+    INDEX (list),
     CONSTRAINT `fk_list_id_delentry`
         FOREIGN KEY (list) REFERENCES lists (uuid)
         ON DELETE CASCADE
