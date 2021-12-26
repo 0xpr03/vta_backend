@@ -173,11 +173,11 @@ pub async fn update_deleted_entries(state: &AppState, mut data: EntryDeletedRequ
         ""
     };
     let sql_fetch = format!(
-        "SELECT d.list,d.time FROM deleted_entry d
+        "SELECT d.list,d.time,d.entry FROM deleted_entry d
         JOIN lists l ON d.list = l.uuid
         WHERE l.owner = ? {time}
         UNION
-        SELECT d.list,d.time FROM deleted_entry d
+        SELECT d.list,d.time,d.entry FROM deleted_entry d
         JOIN list_permissions p ON d.list = p.list
         WHERE p.user = ? {time}",
         time = time_addition);
