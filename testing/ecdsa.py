@@ -208,11 +208,12 @@ def entry_sync_changed(session,client,entries):
 
 
 server = server_info()
-user_id = uuid.uuid4()
+#user_id = uuid.uuid4()
+user_id = uuid.UUID('8ea04ceb-4107-4cb3-b73b-f9d2e22449c6')
 
 startTime = time()
 print("registering")
-register(server, pubkey, privkey, user_id)
+#register(server, pubkey, privkey, user_id)
 print("logging in")
 session = login(server, privkey, user_id)
 print(account_info(session))
@@ -220,14 +221,15 @@ print(account_info(session))
 print("binding password")
 email = str(uuid.uuid4())
 password = str(uuid.uuid4())
-bind_password(session,email,password)
+#bind_password(session,email,password)
 print("logging in via password")
-session = login_password(email,password)
+#session = login_password(email,password)
 print(account_info(session))
 executionTime = (time() - startTime)
 print('Execution time in seconds: ' + str(executionTime))
 print("syncing lists")
 client = uuid.uuid4()
+print(f"client: {client} user: {user_id}")
 for x in range(1):
     lists = [gen_list(),gen_list(),gen_list()]
     lists_del = [gen_list_del(),gen_list_del(),gen_list_del()]
@@ -243,3 +245,4 @@ for x in range(1):
     print('Execution time in seconds: ' + str(executionTime))
 
     #print(res)
+print(f"client: {client} user: {user_id}")

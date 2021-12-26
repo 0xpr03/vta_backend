@@ -112,7 +112,7 @@ async fn form_login(id: Identity, reg: web::Json<AccLoginPassword>, state: AppSt
     Ok(HttpResponse::Ok().finish())
 }
 
-/// App user login
+/// add email + password to account as login
 #[instrument(skip(id))]
 #[post("/api/v1/account/register/password")]
 async fn app_password_register(reg: web::Json<PasswordBindRequest>, id: Identity, state: AppState) -> Result<HttpResponse> {

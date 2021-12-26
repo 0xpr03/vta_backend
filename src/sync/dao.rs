@@ -248,10 +248,22 @@ pub async fn update_deleted_entries(state: &AppState, mut data: EntryDeletedRequ
     trace!(affected=sql_res.rows_affected(),"inserted into deleted_entry");
 
     // delete from entries
-    let query_upsert = format!("DELETE FROM entries WHERE uuid IN
-        (SELECT uuid FROM `{tbl}`)",tbl = table_name);
-    let sql_res = sqlx::query(query_upsert.as_str()).execute(&mut transaction).await.context("inserting back deleted entries")?;
-    trace!(affected=sql_res.rows_affected(),"deleted entries");
+    // retrieve entries to delete via faster method
+    let del_ids: Vec<FetchUuid> = sqlx::query_as::<_,FetchUuid>(format!("SELECT uuid FROM `{tbl}`",tbl=table_name).as_str())
+            .fetch(&mut transaction).try_collect().await.context("fetching delete ids")?;
+    let mut affected = 0;
+    for id in del_ids.into_iter() {
+        let sql_res = sqlx::query("DELETE FROM entries WHERE uuid = ?")
+            .bind(id.uuid)
+            .execute(&mut transaction).await.context("inserting back deleted entries")?;
+        affected += sql_res.rows_affected();
+    }
+    trace!(affected=affected,"deleted entries");
+
+    // let query_upsert = format!("DELETE FROM entries WHERE uuid IN
+    //     (SELECT uuid FROM `{tbl}`)",tbl = table_name);
+    // let sql_res = sqlx::query(query_upsert.as_str()).execute(&mut transaction).await.context("inserting back deleted entries")?;
+    // trace!(affected=sql_res.rows_affected(),"deleted entries");
 
     sqlx::query!("INSERT INTO last_synced (user_id,client,type,date) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE date=VALUES(date)",
         user,&data.client,LastSyncedKind::EntriesDeleted as i32,t_now)
@@ -299,7 +311,7 @@ pub async fn update_changed_entries(state: &AppState, mut data: EntryChangedRequ
     }.fetch(&mut transaction);
     let _raw_return_entries: Vec<EntryChangedEntryBlank> = stream.try_collect().await.context("requesting changes")?;
     let mut raw_return_entries: HashMap<Uuid, EntryChangedEntryBlank> = _raw_return_entries.into_iter().map(|v|(v.uuid,v)).collect();
-    trace!("Found {} changes to send back", raw_return_entries.len());
+    trace!(amount=raw_return_entries.len(),"retrieved changes to send back");
 
     let mut rng = rand::thread_rng();
     let table_name: String = format!("t_{}",repeat(())
@@ -378,9 +390,18 @@ pub async fn update_changed_entries(state: &AppState, mut data: EntryChangedRequ
     trace!(amount=to_update.len(),"retrieved entries to update meanings");
     
     // remove all meanings for entries
-    let query_delete_meanings = format!("DELETE FROM entry_meaning WHERE entry IN (SELECT uuid FROM `{tbl}`)",tbl=table_name);
-    let res = sqlx::query(query_delete_meanings.as_str()).execute(&mut transaction).await.context("deleting meanings")?;
-    trace!(affected=res.rows_affected(),"deleted old meanings");
+    // let query_delete_meanings = format!("DELETE FROM entry_meaning WHERE entry IN (SELECT uuid FROM `{tbl}`)",tbl=table_name);
+    // let res = sqlx::query(query_delete_meanings.as_str()).execute(&mut transaction).await.context("deleting meanings")?;
+    // trace!(affected=res.rows_affected(),"deleted old meanings");
+    let mut affected = 0;
+    for e in data.entries.iter() {
+        let res = sqlx::query("DELETE FROM entry_meaning WHERE entry = ?")
+            .bind(e.uuid)
+            .execute(&mut transaction).await.context("deleting old meanings")?;
+        affected += res.rows_affected();
+    }
+    trace!(affected=affected,"deleted old meanings");
+
 
     // now insert the new meanings
     let mut meanings_ins = 0;
