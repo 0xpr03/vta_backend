@@ -5,17 +5,17 @@ use chrono::Utc;
 use ormx::exports::futures::TryStreamExt;
 use rand::Rng;
 use rand::distributions::Alphanumeric;
-use sqlx::Executor;
+use sqlx::{Executor, MySqlConnection, Connection};
 
 use crate::prelude::*;
 use super::*;
 use super::models::*;
 
 //#[instrument(skip(state,data))]
-pub async fn update_deleted_lists(state: &AppState, mut data: ListDeletedRequest, user: &Uuid) -> Result<HashSet<ListDeleteEntry>> {
+pub async fn update_deleted_lists(sql: &mut MySqlConnection, mut data: ListDeletedRequest, user: &Uuid) -> Result<HashSet<ListDeleteEntry>> {
     let t_now = Utc::now().naive_utc();
 
-    let mut transaction = state.sql.begin().await?;
+    let mut transaction = sql.begin().await?;
     
     let last_synced: Option<Timestamp> = sqlx::query!("SELECT date FROM last_synced WHERE `type` = ? AND user_id = ? AND client = ? FOR UPDATE",
         LastSyncedKind::ListsDeleted as i32, user, &data.client)
@@ -56,10 +56,10 @@ pub async fn update_deleted_lists(state: &AppState, mut data: ListDeletedRequest
     Ok(return_lists)
 }
 
-#[instrument(skip(state,data))]
-pub async fn update_changed_lists(state: &AppState, mut data: ListChangedRequest, user: &Uuid) -> Result<ListChangedResponse> {
+//#[instrument(skip(state,data))]
+pub async fn update_changed_lists(sql: &mut MySqlConnection, mut data: ListChangedRequest, user: &Uuid) -> Result<ListChangedResponse> {
     let t_now = Utc::now().naive_utc();
-    let mut transaction = state.sql.begin().await?;
+    let mut transaction = sql.begin().await?;
     
     let mut rng = rand::thread_rng();
     let table_name: String = format!("t_{}",repeat(())
@@ -157,10 +157,10 @@ pub async fn update_changed_lists(state: &AppState, mut data: ListChangedRequest
 }
 
 //#[instrument(skip(state,data))]
-pub async fn update_deleted_entries(state: &AppState, mut data: EntryDeletedRequest, user: &Uuid) -> Result<HashSet<EntryDeleteEntry>> {
+pub async fn update_deleted_entries(sql: &mut MySqlConnection, mut data: EntryDeletedRequest, user: &Uuid) -> Result<HashSet<EntryDeleteEntry>> {
     let t_now = Utc::now().naive_utc();
 
-    let mut transaction = state.sql.begin().await?;
+    let mut transaction = sql.begin().await?;
     
     let last_synced: Option<Timestamp> = sqlx::query!("SELECT date FROM last_synced WHERE `type` = ? AND user_id = ? AND client = ? FOR UPDATE",
         LastSyncedKind::EntriesDeleted as i32, user, &data.client)
@@ -277,10 +277,10 @@ pub async fn update_deleted_entries(state: &AppState, mut data: EntryDeletedRequ
 }
 
 //#[instrument(skip(state,data))]
-pub async fn update_changed_entries(state: &AppState, mut data: EntryChangedRequest, user: &Uuid) -> Result<Vec<EntryChangedEntry>> {
+pub async fn update_changed_entries(sql: &mut MySqlConnection, mut data: EntryChangedRequest, user: &Uuid) -> Result<Vec<EntryChangedEntry>> {
     let t_now = Utc::now().naive_utc();
 
-    let mut transaction = state.sql.begin().await?;
+    let mut transaction = sql.begin().await?;
     
     let last_synced: Option<Timestamp> = sqlx::query!("SELECT date FROM last_synced WHERE `type` = ? AND user_id = ? AND client = ? FOR UPDATE",
         LastSyncedKind::EntriesChanged as i32, user, &data.client)

@@ -1,5 +1,5 @@
 use actix_identity::Identity;
-use actix_web::{HttpRequest, HttpResponse, post, web};
+use actix_web::{HttpResponse, post, web};
 use super::models::*;
 use super::*;
 
@@ -18,7 +18,7 @@ async fn list_sync_del(reg: web::Json<ListDeletedRequest>, id: Identity, state: 
     let user = Uuid::parse_str(&identity.ok_or(ListError::NotAuthenticated)?)?;
     let data = reg.into_inner();
 
-    let response = dao::update_deleted_lists(&state, data, &user).await?;
+    let response = dao::update_deleted_lists(&mut *state.sql.acquire().await?, data, &user).await?;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -28,7 +28,7 @@ async fn list_sync_changed(reg: web::Json<ListChangedRequest>, id: Identity, sta
     let identity = id.identity();
     trace!(?identity,"list sync changed request");
     let user = Uuid::parse_str(&identity.ok_or(ListError::NotAuthenticated)?)?;
-    let response = dao::update_changed_lists(&state, reg.into_inner(), &user).await?;
+    let response = dao::update_changed_lists(&mut *state.sql.acquire().await?, reg.into_inner(), &user).await?;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -40,7 +40,7 @@ async fn entry_sync_del(reg: web::Json<EntryDeletedRequest>, id: Identity, state
     let user = Uuid::parse_str(&identity.ok_or(ListError::NotAuthenticated)?)?;
     let data = reg.into_inner();
 
-    let response = dao::update_deleted_entries(&state, data, &user).await?;
+    let response = dao::update_deleted_entries(&mut *state.sql.acquire().await?, data, &user).await?;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -52,6 +52,7 @@ async fn entry_sync_changed(reg: web::Json<EntryChangedRequest>, id: Identity, s
     let user = Uuid::parse_str(&identity.ok_or(ListError::NotAuthenticated)?)?;
     let data = reg.into_inner();
 
-    let response = dao::update_changed_entries(&state, data, &user).await?;
+    //let mut connection = state.sql.acquire().await?
+    let response = dao::update_changed_entries(&mut *state.sql.acquire().await?, data, &user).await?;
     Ok(HttpResponse::Ok().json(response))
 }

@@ -5,6 +5,8 @@ use crate::prelude::*;
 pub mod routes;
 pub mod models;
 pub mod dao;
+#[cfg(test)]
+mod tests;
 
 #[derive(Error, Debug)]
 pub enum ListError {
