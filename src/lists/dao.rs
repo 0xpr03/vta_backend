@@ -114,7 +114,7 @@ pub async fn change_entry(sql: &mut MySqlConnection, user: UserId, entry: EntryI
     trace!(list=%list,affected=res.rows_affected(),"updated entry");
 
     let sql_del_meaning = "DELETE FROM entry_meaning WHERE entry = ?";
-    let res = sqlx::query(sql_change)
+    let res = sqlx::query(sql_del_meaning)
         .bind(entry.0)
         .execute(&mut transaction).await.context("deleting meanings")?;
     trace!(list=%list,affected=res.rows_affected(),"deleted meanings");

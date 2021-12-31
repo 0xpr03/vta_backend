@@ -13,9 +13,6 @@ pub fn init(cfg: &mut web::ServiceConfig) {
         .service(list_entries)
         .service(change_entry)
         .service(create_entry);
-        // .service(list_sync_changed)
-        // .service(entry_sync_del)
-        // .service(entry_sync_changed);
 }
 
 // #[instrument(skip(id,reg,state))]
@@ -99,8 +96,6 @@ async fn change_entry(id: Identity, state: AppState, path: web::Path<(Uuid,Uuid)
 #[post("/api/v1/lists/{list}/entry")]
 async fn create_entry(id: Identity, state: AppState, path: web::Path<(Uuid,)>, data: web::Path<EntryCreate>) -> Result<HttpResponse> {
     let user = get_user(id)?;
-    // TODO: we don't need the list, we have to resolve the entry-list by ourself anyway
-    // but its logical to have this API path
     let (list,) = path.into_inner();
     let data = data.into_inner();
 
