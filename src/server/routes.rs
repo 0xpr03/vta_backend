@@ -5,7 +5,7 @@ use crate::prelude::*;
 
 #[instrument]
 #[get("/api/v1/server/info")]
-async fn server_info(state: AppState) -> HttpResponse {
+fn server_info(state: AppState) -> HttpResponse {
     info!("acc register request");
     let info = ServerInfo {
         id: state.id,

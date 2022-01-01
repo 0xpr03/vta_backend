@@ -11,13 +11,13 @@ pub enum AuthError {
     #[error("unknown data store error")]
     Other(#[from] color_eyre::eyre::Error),
     #[error("invalid UUID")]
-    UUID(#[from] uuid::Error),
+    Uuid(#[from] uuid::Error),
     #[error("invalid jwt data")]
     Serde(#[from] serde_json::error::Error),
     #[error("db error")]
-    SQLX(#[from] sqlx::Error),
+    Sqlx(#[from] sqlx::Error),
     #[error("jwt error")]
-    JWT(#[from] jsonwebtoken::errors::Error),
+    Jwt(#[from] jsonwebtoken::errors::Error),
     #[error("invalid or missing auth")]
     NotAuthenticated,
     #[error("invalid login")]
@@ -47,9 +47,9 @@ impl ResponseError for AuthError {
     fn error_response(&self) -> HttpResponse {
         trace!(?self);
         match self {
-            AuthError::UUID(_) => HttpResponse::BadRequest().reason("invalid UUID format").finish(),
+            AuthError::Uuid(_) => HttpResponse::BadRequest().reason("invalid UUID format").finish(),
             AuthError::Serde(_) => HttpResponse::BadRequest().reason("invalid payload").finish(),
-            AuthError::JWT(e) => jwt_err_into_response(e),
+            AuthError::Jwt(e) => jwt_err_into_response(e),
             AuthError::NotAuthenticated => HttpResponse::Unauthorized().finish(),
             AuthError::InvalidCredentials => HttpResponse::Forbidden().finish(),
             e => {

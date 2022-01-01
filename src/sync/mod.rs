@@ -13,11 +13,11 @@ pub enum ListError {
     #[error("unknown data store error")]
     Other(#[from] color_eyre::eyre::Error),
     #[error("invalid UUID")]
-    UUID(#[from] uuid::Error),
+    Uuid(#[from] uuid::Error),
     #[error("invalid jwt data")]
     Serde(#[from] serde_json::error::Error),
     #[error("db error")]
-    SQLX(#[from] sqlx::Error),
+    Sqlx(#[from] sqlx::Error),
     #[error("invalid or missing auth")]
     NotAuthenticated
 }

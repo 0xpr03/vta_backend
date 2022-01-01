@@ -10,7 +10,7 @@ enum CError {
     #[error("invalid jwt data")]
     Serde(#[from] serde_json::error::Error),
     #[error("db error")]
-    SQLX(#[from] sqlx::Error)
+    Sqlx(#[from] sqlx::Error)
 }
 
 impl ResponseError for CError {

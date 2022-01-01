@@ -180,6 +180,7 @@ pub async fn delete_entry(sql: &mut MySqlConnection, user: UserId, entry: EntryI
     Ok(())
 }
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Eq, PartialEq)]
 pub enum Permission {
     READ,WRITE,OWNER,RESHARE
