@@ -206,43 +206,51 @@ def entry_sync_changed(session,client,entries):
         raise Exception(f"List change sync failed with {res.status_code}")
     return res.json()
 
+def full_register(user_id):
+    server = server_info()
+    print("registering")
+    register(server, pubkey, privkey, user_id)
+    print("logging in")
+    session = login(server, privkey, user_id)
+    print(account_info(session))
 
-server = server_info()
-#user_id = uuid.uuid4()
-user_id = uuid.UUID('8ea04ceb-4107-4cb3-b73b-f9d2e22449c6')
+    print("binding password")
+    email = str(uuid.uuid4())
+    password = str(uuid.uuid4())
+    bind_password(session,email,password)
+    print("logging in via password")
+    session = login_password(email,password)
+    return session
 
-startTime = time()
-print("registering")
-#register(server, pubkey, privkey, user_id)
-print("logging in")
-session = login(server, privkey, user_id)
-print(account_info(session))
+def simple_key_login(user_id):
+    print("logging in")
+    session = login(server_info(), privkey, user_id)
+    return session
 
-print("binding password")
-email = str(uuid.uuid4())
-password = str(uuid.uuid4())
-#bind_password(session,email,password)
-print("logging in via password")
-#session = login_password(email,password)
-print(account_info(session))
-executionTime = (time() - startTime)
-print('Execution time in seconds: ' + str(executionTime))
-print("syncing lists")
-client = uuid.uuid4()
-print(f"client: {client} user: {user_id}")
-for x in range(1):
-    lists = [gen_list(),gen_list(),gen_list()]
-    lists_del = [gen_list_del(),gen_list_del(),gen_list_del()]
-    entries_del = [gen_entry_del_from_lists(lists),gen_entry_del_from_lists(lists),gen_entry_del_from_lists(lists)]
-    entries = gen_list_entries(lists)
-    #print(lists)
-    startTime = time()
-    list_sync_changed(session,client,lists)
-    entry_sync_del(session,client,entries_del)
-    entry_sync_changed(session,client,entries)
-    list_sync_del(session,client,lists_del)
-    executionTime = (time() - startTime)
-    print('Execution time in seconds: ' + str(executionTime))
+def test_sync(session,user_id):
+    print(account_info(session))
+    print("syncing lists")
+    client = uuid.uuid4()
+    print(f"client: {client} user: {user_id}")
+    for x in range(1):
+        lists = [gen_list(),gen_list(),gen_list()]
+        lists_del = [gen_list_del(),gen_list_del(),gen_list_del()]
+        entries_del = [gen_entry_del_from_lists(lists),gen_entry_del_from_lists(lists),gen_entry_del_from_lists(lists)]
+        entries = gen_list_entries(lists)
+        #print(lists)
+        startTime = time()
+        list_sync_changed(session,client,lists)
+        entry_sync_del(session,client,entries_del)
+        entry_sync_changed(session,client,entries)
+        list_sync_del(session,client,lists_del)
+        executionTime = (time() - startTime)
+        print('Execution time in seconds: ' + str(executionTime))
 
-    #print(res)
-print(f"client: {client} user: {user_id}")
+        #print(res)
+    print(f"client: {client} user: {user_id}")
+
+#user_id = uuid.UUID('8ea04ceb-4107-4cb3-b73b-f9d2e22449c6')
+user_id = uuid.uuid4()
+session = full_register(user_id)
+#session = simple_key_login(user_id)
+test_sync(session,user_id)
