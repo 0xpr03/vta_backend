@@ -32,29 +32,36 @@ pub mod tests {
             .map(char::from)
             .take(7)
             .collect::<String>());
-    
+            
             let options = MySqlConnectOptions::new()
             .host("127.0.0.1")
             .port(3306)
             .username("root");
-            // if let Some(pw) = Some("root") {
-            //     options = options.password(&pw);
-            // }
+
+            let conn_uri = std::env::var("DATABASE_URL").ok();
     
             {
-                let db_pool = MySqlPoolOptions::new().after_connect(|conn| Box::pin(async move {
+                let opts = MySqlPoolOptions::new().after_connect(|conn| Box::pin(async move {
                     conn.execute("SET SESSION sql_mode=STRICT_ALL_TABLES; SET SESSION innodb_strict_mode=ON;").await.unwrap();
                     Ok(())
-                })).connect_with(options.clone()).await.unwrap();
+                }));
+                let db_pool = match conn_uri.as_deref() {
+                    Some(v) => opts.connect(v).await.unwrap(),
+                    None => opts.connect_with(options.clone()).await.unwrap(),
+                };
                 let conn = &mut *db_pool.acquire().await.unwrap();
                 sqlx::query(format!("CREATE DATABASE {}",db_name).as_str()).execute(conn).await.unwrap();
             }
     
             let options = options.database(&db_name);
-            let db_pool = MySqlPoolOptions::new().after_connect(|conn| Box::pin(async move {
+            let opts = MySqlPoolOptions::new().after_connect(|conn| Box::pin(async move {
                 conn.execute("SET SESSION sql_mode=STRICT_ALL_TABLES; SET SESSION innodb_strict_mode=ON;").await.unwrap();
                 Ok(())
-            })).connect_with(options.clone()).await.unwrap();
+            }));
+            let db_pool = match conn_uri.as_deref() {
+                Some(v) => opts.connect(v).await.unwrap(),
+                None => opts.connect_with(options.clone()).await.unwrap(),
+            };
     
             sqlx::migrate!()
             .run(&mut *db_pool.begin().await.unwrap()).await.unwrap();
