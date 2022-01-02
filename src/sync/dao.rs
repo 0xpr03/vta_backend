@@ -1,8 +1,7 @@
 use std::collections::{HashSet, HashMap};
 use std::iter::repeat;
-
 use chrono::Utc;
-use ormx::exports::futures::TryStreamExt;
+use futures::TryStreamExt;
 use rand::Rng;
 use rand::distributions::Alphanumeric;
 use sqlx::{Executor, MySqlConnection, Connection};
@@ -279,12 +278,13 @@ pub async fn update_deleted_entries(sql: &mut MySqlConnection, mut data: EntryDe
 //#[instrument(skip(state,data))]
 pub async fn update_changed_entries(sql: &mut MySqlConnection, mut data: EntryChangedRequest, user: &Uuid) -> Result<Vec<EntryChangedEntry>> {
     let t_now = Utc::now().naive_utc();
-
+    
     let mut transaction = sql.begin().await?;
     
-    let last_synced: Option<Timestamp> = sqlx::query!("SELECT date FROM last_synced WHERE `type` = ? AND user_id = ? AND client = ? FOR UPDATE",
-        LastSyncedKind::EntriesChanged as i32, user, &data.client)
-        .fetch_optional(&mut transaction).await.context("selecting last_synced")?.map(|v|v.date);
+    // let last_synced: Option<Timestamp> = sqlx::query!("SELECT date FROM last_synced WHERE `type` = ? AND user_id = ? AND client = ? FOR UPDATE",
+    //     LastSyncedKind::EntriesChanged as i32, user, &data.client)
+    //     .fetch_optional(&mut transaction).await.context("selecting last_synced")?.map(|v|v.date);
+    let last_synced = last_synced(&mut transaction,user,&data.client,LastSyncedKind::EntriesChanged).await?;
 
     // fetch data to return
     // don't request meanings already, we can do that after checking for newer data in the payload
@@ -427,13 +427,26 @@ pub async fn update_changed_entries(sql: &mut MySqlConnection, mut data: EntryCh
         return_entries.push(e.into_full(meanings));
     }
 
-    sqlx::query!("INSERT INTO last_synced (user_id,client,type,date) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE date=VALUES(date)",
-    user,&data.client,LastSyncedKind::EntriesChanged as i32,t_now)
-    .execute(&mut transaction).await.context("updating last_synced time")?;
+    update_last_synced(&mut transaction,user,&data.client,LastSyncedKind::EntriesChanged,t_now).await?;
 
     transaction.execute(format!("DROP TABLE {}",table_name).as_str()).await.context("dropping temp table")?;
 
     transaction.commit().await?;
 
     Ok(return_entries)
+}
+
+async fn last_synced(sql: &mut MySqlConnection, user: &Uuid, client: &Uuid, kind: LastSyncedKind) -> Result<Option<Timestamp>> {
+    let last_synced: Option<Timestamp> = sqlx::query!("SELECT date FROM last_synced WHERE `type` = ? AND user_id = ? AND client = ? FOR UPDATE",
+        kind as i32, user, client)
+        .fetch_optional(sql).await.context("selecting last_synced")?.map(|v|v.date);
+
+    Ok(last_synced)
+}
+
+async fn update_last_synced(sql: &mut MySqlConnection, user: &Uuid, client: &Uuid, kind: LastSyncedKind,time: Timestamp) -> Result<()> {
+    sqlx::query("INSERT INTO last_synced (user_id,client,type,date) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE date=VALUES(date)")
+        .bind(user).bind(client).bind(kind as i32).bind(time)
+        .execute(sql).await.context("updating last_synced time")?;
+    Ok(())
 }

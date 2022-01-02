@@ -5,6 +5,8 @@ use crate::prelude::*;
 pub mod routes;
 pub mod user;
 pub mod dao;
+#[cfg(test)]
+mod tests;
 
 #[derive(Error, Debug)]
 pub enum AuthError {
@@ -23,7 +25,11 @@ pub enum AuthError {
     #[error("invalid login")]
     InvalidCredentials,
     #[error("hashing error")]
-    Argon2(#[from] argon2::password_hash::Error)
+    Argon2(#[from] argon2::password_hash::Error),
+    #[error("user already existing")]
+    ExistingUser,
+    #[error("login exists already")]
+    ExistingLogin,
 }
 
 fn jwt_err_into_response(error: &jsonwebtoken::errors::Error) -> HttpResponse {
@@ -52,6 +58,8 @@ impl ResponseError for AuthError {
             AuthError::Jwt(e) => jwt_err_into_response(e),
             AuthError::NotAuthenticated => HttpResponse::Unauthorized().finish(),
             AuthError::InvalidCredentials => HttpResponse::Forbidden().finish(),
+            AuthError::ExistingUser => HttpResponse::Conflict().reason("user already registered").finish(),
+            AuthError::ExistingLogin => HttpResponse::Conflict().reason("login already existing").finish(),
             e => {
                 warn!("{}",e);
                 HttpResponse::InternalServerError().finish()

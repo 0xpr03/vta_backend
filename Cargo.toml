@@ -38,11 +38,9 @@ opentelemetry = { version = "0.16", features = ["rt-tokio-current-thread"] }
 opentelemetry-jaeger = { version = "0.15", features = ["rt-tokio-current-thread"] }
 # JWT for app API authentication
 jsonwebtoken = "7"
-# orm + sql
-[dependencies.ormx]
-version = "0.10"
-features = ["mysql"]
-
+# try_collect
+futures = "0.3"
+# async sql
 [dependencies.sqlx]
 version = "0.5"
 features = [ "runtime-tokio-native-tls","mysql","migrate","chrono","uuid"]

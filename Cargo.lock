@@ -1540,31 +1540,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ormx"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef2bf82ea10ee1cd3759273ea08ef15649d8d149d295997c55e20f7c796f6828"
-dependencies = [
- "futures",
- "ormx-macros",
- "sqlx",
-]
-
-[[package]]
-name = "ormx-macros"
-version = "0.10.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc25e891ba4aa778955168118f7335c7e59bc6e21558e9c29029a126f6594e39"
-dependencies = [
- "itertools",
- "once_cell",
- "proc-macro-error",
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "owo-colors"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1692,30 +1667,6 @@ name = "ppv-lite86"
 version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac74c624d6b2d21f425f752262f42188365d7b8ff1aff74c82e45136510a4857"
-
-[[package]]
-name = "proc-macro-error"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da25490ff9892aab3fcf7c36f08cfb902dd3e71ca0f9f9517bea02a73a5ce38c"
-dependencies = [
- "proc-macro-error-attr",
- "proc-macro2",
- "quote",
- "syn",
- "version_check",
-]
-
-[[package]]
-name = "proc-macro-error-attr"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1be40180e52ecc98ad80b184934baf3d0d29f979574e439af5a55274b35f869"
-dependencies = [
- "proc-macro2",
- "quote",
- "version_check",
-]
 
 [[package]]
 name = "proc-macro-hack"
@@ -2814,10 +2765,10 @@ dependencies = [
  "chrono",
  "color-eyre",
  "config",
+ "futures",
  "jsonwebtoken",
  "opentelemetry",
  "opentelemetry-jaeger",
- "ormx",
  "rand",
  "rand_core",
  "serde 1.0.130",

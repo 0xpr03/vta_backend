@@ -8,7 +8,6 @@ use jsonwebtoken::DecodingKey;
 use jsonwebtoken::TokenData;
 use jsonwebtoken::Validation;
 use jsonwebtoken::decode;
-use ormx::Insert;
 use rand_core::OsRng;
 use serde::de::DeserializeOwned;
 use std::collections::HashSet;
@@ -38,7 +37,7 @@ async fn app_register(reg: web::Json<AccRegister>,state: AppState) -> Result<Htt
         Ok((td.claims,reg.key,reg.keytype))
     }).await.context("failed joining verifier thread")??;
 
-    let uid = dao::register_user(&state,reg_claims,auth_key.into_bytes(),keytype).await?;
+    let uid = dao::register_user(&mut *state.sql.begin().await?,&reg_claims,auth_key.as_bytes(),keytype).await?;
     trace!(?uid,"registered account with key");
     Ok(HttpResponse::Ok().finish())
 }
@@ -77,7 +76,7 @@ async fn app_login(id: Identity, reg: web::Json<AccLoginKey>, state: AppState) -
     trace!("acc login via key");
     let reg = reg.into_inner();
     let user = reg.iss;
-    let key_data = dao::user_key(&state,&user).await?
+    let key_data = dao::user_key(&mut *state.sql.acquire().await?,&user).await?
         .ok_or(AuthError::InvalidCredentials)?;
     trace!(?key_data,"user key");
     let server_id = state.id.to_string();
@@ -101,7 +100,7 @@ async fn form_login(id: Identity, reg: web::Json<AccLoginPassword>, state: AppSt
     let reg: AccLoginPassword = reg.into_inner();
 
     let mut conn = state.sql.acquire().await?;
-    let login_data = UserLogin::by_email_opt(&mut conn, &reg.email).await?
+    let login_data = dao::user_by_email(&mut conn, &reg.email).await?
         .ok_or(AuthError::InvalidCredentials)?;
     let hash_move = login_data.password;
     task::spawn_blocking(move || -> Result<_>  {
@@ -118,7 +117,7 @@ async fn form_login(id: Identity, reg: web::Json<AccLoginPassword>, state: AppSt
 async fn app_password_register(reg: web::Json<PasswordBindRequest>, id: Identity, state: AppState) -> Result<HttpResponse> {
     let identity = id.identity();
     trace!(?identity,"acc info request");
-    let uuid = Uuid::parse_str(&identity.ok_or(AuthError::NotAuthenticated)?)?;
+    let user_id = Uuid::parse_str(&identity.ok_or(AuthError::NotAuthenticated)?)?;
     let reg = reg.into_inner();
 
     let pw_move = reg.password;
@@ -126,19 +125,13 @@ async fn app_password_register(reg: web::Json<PasswordBindRequest>, id: Identity
         hash_pw(pw_move)
     }).await.context("failed joining verifier thread")??;
 
-    let mut conn = state.sql.acquire().await?;
-    InsertUserLogin {
-        user_id: uuid,
-        email: reg.email,
-        password: hashed_password,
-        verified: false,
-    }.insert(&mut conn).await?;
+    dao::create_password_login(&mut *state.sql.begin().await?,&user_id,&reg.email,&hashed_password).await?;
     // TODO: handle duplicate entries instead of erroring
 
     Ok(HttpResponse::Ok().finish())
 }
 
-fn hash_pw(pw: String) -> Result<String>{
+pub(super) fn hash_pw(pw: String) -> Result<String>{
     let salt = argon2::password_hash::SaltString::generate(&mut OsRng);
 
     // Argon2 with default params (Argon2id v19)
@@ -148,7 +141,7 @@ fn hash_pw(pw: String) -> Result<String>{
     Ok(argon2.hash_password(pw.as_bytes(), &salt)?.to_string())
 }
 
-fn verify_pw(pw: String, hash: String) -> Result<()> {
+pub(super) fn verify_pw(pw: String, hash: String) -> Result<()> {
     let parsed_hash = argon2::PasswordHash::new(&hash)?;
 
     let argon2 = argon2::Argon2::default();
@@ -164,7 +157,7 @@ async fn account_info(id: Identity, state: AppState, req: HttpRequest) -> Result
     let identity = id.identity();
     trace!(?identity,"acc info request");
     let uuid = Uuid::parse_str(&identity.ok_or(AuthError::NotAuthenticated)?)?;
-    Ok(match User::by_user_uuid_opt(&state.sql, &uuid).await? {
+    Ok(match dao::user_by_uuid(&mut *state.sql.acquire().await?, &uuid).await? {
         Some(v) => HttpResponse::Ok().json(v),
         None => {
             id.forget();

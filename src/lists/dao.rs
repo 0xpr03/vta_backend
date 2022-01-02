@@ -1,5 +1,5 @@
 use chrono::Utc;
-use ormx::exports::futures::TryStreamExt;
+use futures::TryStreamExt;
 use sqlx::{MySqlConnection, Connection};
 
 use crate::prelude::*;
