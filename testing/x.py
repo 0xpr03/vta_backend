@@ -27,6 +27,8 @@ except mariadb.Error as e:
     sys.exit(1)
 print("connected to db")
 cur = conn.cursor()
+cur.execute("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA")
+print(f"found DBs: {cur.fetchall()}")
 for file in sorted(os.listdir("migrations")):
     f = open("migrations/"+file,"r")
     lines = f.read().split(";")

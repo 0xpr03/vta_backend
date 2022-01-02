@@ -32,6 +32,7 @@ pub mod tests {
             .map(char::from)
             .take(7)
             .collect::<String>());
+            println!("Temp DB: {}",db_name);
             
             let options = MySqlConnectOptions::new()
             .host("127.0.0.1")
@@ -54,14 +55,25 @@ pub mod tests {
             }
     
             let options = options.database(&db_name);
-            let opts = MySqlPoolOptions::new().after_connect(|conn| Box::pin(async move {
+            // hack to avoid problems with URI/ENV connections that already select a database
+            // which prevents us from doing so via MySqlConnectOptions
+            let conn_db_switch = format!("use {}",db_name);
+            let opts = MySqlPoolOptions::new().after_connect(move|conn| {
+                let c = conn_db_switch.clone();
+                Box::pin(async move {
                 conn.execute("SET SESSION sql_mode=STRICT_ALL_TABLES; SET SESSION innodb_strict_mode=ON;").await.unwrap();
+                conn.execute(c.as_str()).await.unwrap();
                 Ok(())
-            }));
+            })});
             let db_pool = match conn_uri.as_deref() {
                 Some(v) => opts.connect(v).await.unwrap(),
                 None => opts.connect_with(options.clone()).await.unwrap(),
             };
+
+            let conn = &mut *db_pool.begin().await.unwrap();
+
+            let res = sqlx::query_as::<_,(String,)>("SELECT DATABASE() FROM DUAL").fetch_optional(&mut *conn).await.unwrap();
+            println!("Selected Database: {:?}",res);
     
             sqlx::migrate!()
             .run(&mut *db_pool.begin().await.unwrap()).await.unwrap();

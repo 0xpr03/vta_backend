@@ -1,4 +1,4 @@
-name: Rust
+name: Main
 
 on:
   pull_request:
@@ -55,8 +55,9 @@ jobs:
 
       - name: Test
         env:
-            DATABASE_URL: mysql://user:password@127.0.0.1:${{ job.services.mariadb.ports[3306] }}/test
-        run: cargo test
+            DATABASE_URL: mysql://root:password@127.0.0.1:${{ job.services.mariadb.ports[3306] }}/test
+            RUST_BACKTRACE: 1
+        run: cargo test -- --nocapture
 
       - name: Build
         env:
