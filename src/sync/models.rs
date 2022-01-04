@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::hash::{Hash, Hasher};
 
@@ -25,13 +26,24 @@ impl TryFrom<i32> for LastSyncedKind {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ListDeletedRequest {
     pub client: Uuid,
     pub lists: Vec<ListDeleteEntry>,
 }
 
-#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+/// Server response to client for list delete sync
+#[derive(Debug, Serialize)]
+pub struct ListDeletedResponse {
+    /// Delta of deleted lists for the client to store
+    pub lists: HashMap<Uuid,ListDeleteEntry>,
+    /// Lists that the server didn't know, thus no tombstone stored
+    pub unknown: Vec<Uuid>,
+    /// Lists for which the client doesn't have owner rights to delete them
+    pub unowned: Vec<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct ListDeleteEntry {
     pub list: Uuid,
     pub time: Timestamp,

@@ -199,10 +199,24 @@ CREATE TABLE IF NOT EXISTS deleted_list
         ON UPDATE RESTRICT
 );
 
+CREATE TABLE IF NOT EXISTS deleted_list_shared
+(
+    user BINARY(16) NOT NULL,
+    list BINARY(16) NOT NULL,
+    `time` DATETIME NOT NULL,
+    PRIMARY KEY (user,list),
+    INDEX (list),
+    INDEX (user),
+    CONSTRAINT `fk_user_id_dellist_shared`
+        FOREIGN KEY (user) REFERENCES users (uuid)
+        ON DELETE CASCADE
+        ON UPDATE RESTRICT
+);
+
 CREATE TABLE IF NOT EXISTS deleted_entry
 (
     list BINARY(16) NOT NULL,
-    entry BINARY(16) NOT NULL PRIMARY KEY,
+    `entry` BINARY(16) NOT NULL PRIMARY KEY,
     `time` DATETIME NOT NULL,
     INDEX `l_deleted` (`list`,`time`),
     INDEX (list),

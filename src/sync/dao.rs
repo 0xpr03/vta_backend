@@ -2,6 +2,8 @@ use std::collections::{HashSet, HashMap};
 use std::iter::repeat;
 use chrono::Utc;
 use futures::TryStreamExt;
+use futures::future;
+use futures::stream::{self, StreamExt};
 use rand::Rng;
 use rand::distributions::Alphanumeric;
 use sqlx::{Executor, MySqlConnection, Connection};
@@ -11,48 +13,91 @@ use super::*;
 use super::models::*;
 
 //#[instrument(skip(state,data))]
-pub async fn update_deleted_lists(sql: &mut MySqlConnection, mut data: ListDeletedRequest, user: &Uuid) -> Result<HashSet<ListDeleteEntry>> {
+pub async fn update_deleted_lists(sql: &mut DbConn, data: ListDeletedRequest, user: &Uuid) -> Result<ListDeletedResponse> {
     let t_now = Utc::now().naive_utc();
 
     let mut transaction = sql.begin().await?;
     
-    let last_synced: Option<Timestamp> = sqlx::query!("SELECT date FROM last_synced WHERE `type` = ? AND user_id = ? AND client = ? FOR UPDATE",
-        LastSyncedKind::ListsDeleted as i32, user, &data.client)
-        .fetch_optional(&mut transaction).await?.map(|v|v.date);
+    let last_synced: Option<Timestamp> = last_synced(&mut transaction, user, &data.client, LastSyncedKind::ListsDeleted).await?;
 
+    let time_cond = if last_synced.is_none() {
+        ""
+    } else {
+        "AND time > ?"
+    };
+    let sql_fetch = format!("SELECT list,time FROM deleted_list
+    WHERE user = ? {time}
+    UNION
+    SELECT list,time FROM deleted_list_shared
+    WHERE user = ? {time}",time=time_cond);
+    let sql_t = sqlx::query_as::<_,ListDeleteEntry>(sql_fetch.as_str());
     let stream = match last_synced {
-        Some(time) => sqlx::query_as::<_,ListDeleteEntry>("SELECT list,time FROM deleted_list WHERE user = ? AND time > ?").bind(user).bind(time),
-        None => sqlx::query_as::<_,ListDeleteEntry>("SELECT list,time FROM deleted_list WHERE user = ?").bind(user)
+        Some(time) => sql_t.bind(user).bind(time).bind(user).bind(time),
+        None => sql_t.bind(user).bind(user)
     }.fetch(&mut transaction);
 
-    let mut return_lists: HashSet<ListDeleteEntry> = stream.try_collect().await?;
+    let mut return_lists: HashMap<Uuid,ListDeleteEntry> = stream.map_ok(|v|(v.list,v))
+        .try_collect().await.context("retrieving changes to return")?;
     
-    // two loops to retain statement cache
-    // FIXLATER no async in iterators
-    let mut lists = Vec::with_capacity(data.lists.len());
-    for v in data.lists.iter_mut() {
+    // four loops to retain statement cache in the transaction connection
+
+    // remove entries without permissions
+    // FIXLATER no async in iterators, stream::iter().try_filter_map(|mut v| async move {}) lifetime issues
+    let mut unknown = Vec::new();
+    let mut unowned = Vec::new();
+    let mut filtered = Vec::with_capacity(data.lists.len());
+    for mut v in data.lists.into_iter() {
         if v.time > t_now {
             info!(%v.time,%t_now,"ignoring change date in future");
             v.time = t_now;
         }
         // don't process deletions we already know
-        if !return_lists.remove(v) {
-            // TODO: check owner, not change permissions
-            sqlx::query!("INSERT IGNORE INTO deleted_list (user,list,time) VALUES(?,?,?)",user,v.list,v.time).execute(&mut transaction).await?;
-            lists.push(v);
+        if return_lists.remove(&v.list).is_none() {
+            let owner = sqlx::query_as::<_,(Uuid,)>("SELECT owner FROM lists WHERE uuid = ?")
+                .bind(v.list).fetch_optional(&mut transaction).await.context("retrieving owner of lists")?;
+            if let Some((owner,)) = owner {
+                // only owners can delete lists
+                if owner == *user {
+                    filtered.push(v);
+                } else {
+                    trace!(list=%v.list,"Ignoring non-owned list deletion request");
+                    unowned.push(v.list);
+                }
+            } else {
+                trace!(list=%v.list,"Ignoring unknown list deletion request");
+                unknown.push(v.list);
+            }
         }
     }
-    for v in lists.iter() {
-        sqlx::query!("DELETE FROM lists WHERE owner = ? AND uuid = ?",user,v.list).execute(&mut transaction).await?;
+    // add tombstone for owner
+    for v in filtered.iter() {
+        sqlx::query("INSERT IGNORE INTO deleted_list (user,list,time) VALUES(?,?,?)")
+            .bind(user).bind(v.list).bind(v.time)
+            .execute(&mut transaction).await.context("inserting deleted_list")?;
+    }
+    // add tombstone for shared users
+    for v in filtered.iter() {
+        sqlx::query("INSERT INTO deleted_list_shared (user,list,`time`) 
+            SELECT user,list,? FROM list_permissions WHERE list = ?")
+            .bind(v.time).bind(v.list)
+            .execute(&mut transaction).await.context("inserting deleted_list_shared")?;
+    }
+    // delete list
+    for v in filtered.iter() {
+        sqlx::query("DELETE FROM lists WHERE owner = ? AND uuid = ?")
+            .bind(user).bind(v.list)
+            .execute(&mut transaction).await.context("deleting lists")?;
     }
 
-    sqlx::query!("INSERT INTO last_synced (user_id,client,type,date) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE date=VALUES(date)",
-        user,&data.client,LastSyncedKind::ListsDeleted as i32,t_now)
-        .execute(&mut transaction).await.context("updating sync time")?;
+    update_last_synced(&mut transaction,user, &data.client, LastSyncedKind::ListsDeleted, t_now).await?;
 
     transaction.commit().await?;
 
-    Ok(return_lists)
+    Ok(ListDeletedResponse {
+        lists: return_lists,
+        unowned,
+        unknown,
+    })
 }
 
 //#[instrument(skip(state,data))]

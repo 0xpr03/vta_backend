@@ -1,11 +1,7 @@
 use super::dao;
-use super::user::*;
 use chrono::Duration;
 use chrono::Utc;
-use rand::distributions::Standard;
-use rand::{distributions::Alphanumeric, Rng};
 
-use crate::prelude::*;
 use crate::prelude::tests::*;
 use super::AuthError;
 
@@ -60,7 +56,9 @@ async fn test_password_login() {
     dao::create_password_login(&mut conn, &claims.iss, &email, &pw_hash).await.unwrap();
 
     // try to do it again
-    let res = dao::create_password_login(&mut conn, &claims.iss, &email, &pw_hash).await;
+    let(email2,password2) = gen_mail_pw();
+    // we just pass the password itself, doesn't matter here
+    let res = dao::create_password_login(&mut conn, &claims.iss, &email2, &password2).await;
     match res {
         Err(AuthError::ExistingLogin) => (),
         e => panic!("expected ExistingLogin, got {:?}",e),
@@ -79,31 +77,10 @@ async fn test_password_login() {
     db.drop_async().await;
 }
 
-fn gen_user() -> (RegisterClaims,Vec<u8>,KeyType) {
-    let mut rng = rand::thread_rng();
-    let claims = RegisterClaims {
-        iss: Uuid::new_v4(),
-        name: (&mut rng).sample_iter(Alphanumeric)
-        .take(7)
-        .map(char::from)
-        .collect(),
-        delete_after: Some(3600),
-    };
-    let key: Vec<u8> = rng.sample_iter(Standard).take(16).collect();
-    let key_type = KeyType::EC_PEM;
-    (claims,key,key_type)
-}
-
 fn gen_mail_pw() -> (String,String) {
     let mut rng = rand::thread_rng();
-    let email: String = (&mut rng).sample_iter(Alphanumeric)
-        .take(7)
-        .map(char::from)
-        .collect();
-    let password = (&mut rng).sample_iter(Alphanumeric)
-    .take(40)
-    .map(char::from)
-    .collect();
+    let email: String = random_string(&mut rng,7);
+    let password = random_string(&mut rng,40);
     
     (email,password)
 }
