@@ -30,6 +30,12 @@ pub enum AuthError {
     ExistingUser,
     #[error("login exists already")]
     ExistingLogin,
+    #[error("account locked")]
+    LockedAccount,
+    #[error("user unknown")]
+    UnknownUser,
+    #[error("user deleted")]
+    DeletedUser,
 }
 
 fn jwt_err_into_response(error: &jsonwebtoken::errors::Error) -> HttpResponse {
@@ -60,6 +66,9 @@ impl ResponseError for AuthError {
             AuthError::InvalidCredentials => HttpResponse::Forbidden().finish(),
             AuthError::ExistingUser => HttpResponse::Conflict().reason("user already registered").finish(),
             AuthError::ExistingLogin => HttpResponse::Conflict().reason("login already existing").finish(),
+            AuthError::LockedAccount => HttpResponse::Forbidden().reason("account locked").finish(),
+            AuthError::DeletedUser => HttpResponse::Conflict().reason("account deleted").finish(),
+            AuthError::UnknownUser => HttpResponse::BadRequest().reason("account unknown").finish(),
             e => {
                 warn!("{}",e);
                 HttpResponse::InternalServerError().finish()

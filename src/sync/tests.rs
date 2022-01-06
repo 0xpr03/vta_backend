@@ -141,6 +141,15 @@ async fn test_deleted_lists_shared() {
     assert_eq!(0,res.unowned.len());
     assert_ne!(None,res.lists.get(&del_req.lists[0].list));
 
+    // now delete user1, the tombstones for user 2&3 should remain
+    crate::users::dao::delete_user(&mut conn, &UserId(user_1)).await.unwrap();
+    let new_req = ListDeletedRequest {client: Uuid::new_v4(),lists: Vec::new()};
+    let res = dao::update_deleted_lists(&mut conn, new_req.clone(), &user_2).await.unwrap();
+    assert_ne!(None,res.lists.get(&del_req.lists[0].list));
+    // and user 3
+    let res = dao::update_deleted_lists(&mut conn, new_req, &user_3).await.unwrap();
+    assert_ne!(None,res.lists.get(&del_req.lists[0].list));
+
     db.drop_async().await;
 }
 

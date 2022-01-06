@@ -2,27 +2,6 @@ use std::fmt;
 
 use crate::prelude::*;
 
-pub struct ListId(pub Uuid);
-pub struct EntryId(pub Uuid);
-pub struct UserId(pub Uuid);
-
-impl fmt::Display for ListId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-impl fmt::Display for EntryId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-impl fmt::Display for UserId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct List {
     pub id: Uuid,

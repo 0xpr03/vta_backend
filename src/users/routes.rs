@@ -10,6 +10,7 @@ use jsonwebtoken::Validation;
 use jsonwebtoken::decode;
 use rand_core::OsRng;
 use serde::de::DeserializeOwned;
+use std::borrow::Borrow;
 use std::collections::HashSet;
 
 use super::*;
@@ -20,7 +21,8 @@ pub fn init(cfg: &mut web::ServiceConfig) {
         .service(account_info)
         .service(app_login)
         .service(app_password_register)
-        .service(form_login);
+        .service(form_login)
+        .service(account_delete);
 }
 
 /// App user register route.
@@ -75,21 +77,39 @@ fn verify_claims_auth<T: DeserializeOwned>(sub: &str, server_id: String,input: &
 async fn app_login(id: Identity, reg: web::Json<AccLoginKey>, state: AppState) -> Result<HttpResponse> {
     trace!("acc login via key");
     let reg = reg.into_inner();
-    let user = reg.iss;
-    let key_data = dao::user_key(&mut *state.sql.acquire().await?,&user).await?
-        .ok_or(AuthError::InvalidCredentials)?;
+    let mut conn = state.sql.acquire().await?;
+    let user = UserId(reg.iss);
+    let key_data = match dao::user_key(&mut conn,&user).await? {
+        None => return Err(match dao::user_deleted(&mut conn, &user).await? {
+            true => AuthError::DeletedUser,
+            false => AuthError::InvalidCredentials,
+        }),
+        Some(k) => k,
+    };
     trace!(?key_data,"user key");
     let server_id = state.id.to_string();
     let claims = task::spawn_blocking(move || -> Result<_>  {
         let td: TokenData<LoginClaims> = verify_claims_auth("login", server_id,&reg.proof,&key_data.auth_key,&key_data.key_type)?;
         Ok(td.claims)
     }).await.context("failed joining verifier thread")??;
-    if claims.iss != user {
+    if claims.iss != user.0 {
         debug!(%claims.iss,%user,"claim iss != user");
         return Err(AuthError::InvalidCredentials);
     }
     // TODO: update last seen
     id.remember(user.to_string());
+    Ok(HttpResponse::Ok().finish())
+}
+
+#[instrument(skip(id))]
+#[post("/api/v1/account/delete")]
+async fn account_delete(id: Identity, reg: web::Json<AccLoginKey>, state: AppState) -> Result<HttpResponse> {
+    let user_id = get_user(&id)?;
+    trace!(?user_id,"account delete request");
+
+    dao::delete_user(&mut *state.sql.begin().await?,&user_id).await?;
+    id.forget();
+
     Ok(HttpResponse::Ok().finish())
 }
 
@@ -115,9 +135,8 @@ async fn form_login(id: Identity, reg: web::Json<AccLoginPassword>, state: AppSt
 #[instrument(skip(id))]
 #[post("/api/v1/account/register/password")]
 async fn app_password_register(reg: web::Json<PasswordBindRequest>, id: Identity, state: AppState) -> Result<HttpResponse> {
-    let identity = id.identity();
-    trace!(?identity,"acc info request");
-    let user_id = Uuid::parse_str(&identity.ok_or(AuthError::NotAuthenticated)?)?;
+    let user_id = get_user(id)?;
+    trace!(?user_id,"acc info request");
     let reg = reg.into_inner();
 
     let pw_move = reg.password;
@@ -154,14 +173,17 @@ pub(super) fn verify_pw(pw: String, hash: String) -> Result<()> {
 #[instrument(skip(id))]
 #[get("/api/v1/account/info")]
 async fn account_info(id: Identity, state: AppState, req: HttpRequest) -> Result<HttpResponse> {
-    let identity = id.identity();
-    trace!(?identity,"acc info request");
-    let uuid = Uuid::parse_str(&identity.ok_or(AuthError::NotAuthenticated)?)?;
-    Ok(match dao::user_by_uuid(&mut *state.sql.acquire().await?, &uuid).await? {
+    let user_id = get_user(&id)?;
+    Ok(match dao::user_by_uuid(&mut *state.sql.acquire().await?, &user_id).await? {
         Some(v) => HttpResponse::Ok().json(v),
         None => {
             id.forget();
             HttpResponse::Gone().body("deleted - user invalid")
         }
     })
+}
+
+/// Retrieve user from IDentity or error out
+fn get_user<T: Borrow<actix_identity::Identity>>(id: T) -> Result<UserId> {
+    Ok(UserId(Uuid::parse_str(&id.borrow().identity().ok_or(AuthError::NotAuthenticated)?)?))
 }

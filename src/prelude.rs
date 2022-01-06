@@ -1,3 +1,5 @@
+use std::{fmt, ops::Deref};
+
 use chrono::NaiveDateTime;
 
 pub type Timestamp = NaiveDateTime;
@@ -7,6 +9,41 @@ pub use uuid::Uuid;
 pub use color_eyre::eyre::Context;
 pub use serde::{Deserialize, Serialize};
 pub use crate::state::AppState;
+
+pub struct ListId(pub Uuid);
+pub struct EntryId(pub Uuid);
+pub struct UserId(pub Uuid);
+
+impl fmt::Display for ListId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+impl fmt::Display for EntryId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+impl fmt::Display for UserId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+impl fmt::Debug for ListId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ListId({})", self.0)
+    }
+}
+impl fmt::Debug for EntryId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "EntryId({})", self.0)
+    }
+}
+impl fmt::Debug for UserId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "UserId({})", self.0)
+    }
+}
 
 #[cfg(test)]
 pub mod tests {

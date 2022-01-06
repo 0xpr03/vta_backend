@@ -1,7 +1,7 @@
 use super::dao;
 use chrono::Duration;
 use chrono::Utc;
-
+use crate::prelude::*;
 use crate::prelude::tests::*;
 use super::AuthError;
 
@@ -25,14 +25,14 @@ async fn test_register() {
         e => panic!("expected ExistingUser, got {:?}",e),
     }
     // and verify the user created is actually from the first call
-
-    let res = dao::user_key(&mut conn,&claims.iss).await.unwrap();
+    let user  = UserId(claims.iss);
+    let res = dao::user_key(&mut conn,&user).await.unwrap();
     let res = res.expect("no key found");
     assert_eq!(key,res.auth_key);
     assert_eq!(key_type,res.key_type);
     
 
-    let res_user = dao::user_by_uuid(&mut conn, &claims.iss).await.unwrap();
+    let res_user = dao::user_by_uuid(&mut conn, &user).await.unwrap();
     let res_user = res_user.expect("no user found");
     assert_eq!(claims.iss,res_user.uuid);
     assert_eq!(claims.name,res_user.name);
@@ -49,16 +49,17 @@ async fn test_password_login() {
     let mut conn = &mut *db.conn().await;
 
     let(claims,key,key_type) = gen_user();
+    let user_id = UserId(claims.iss);
     dao::register_user(&mut conn,&claims,&key,key_type.clone()).await.unwrap();
 
     let(email,password) = gen_mail_pw();
     let pw_hash = super::routes::hash_pw(password.clone()).unwrap();
-    dao::create_password_login(&mut conn, &claims.iss, &email, &pw_hash).await.unwrap();
+    dao::create_password_login(&mut conn, &user_id, &email, &pw_hash).await.unwrap();
 
     // try to do it again
     let(email2,password2) = gen_mail_pw();
     // we just pass the password itself, doesn't matter here
-    let res = dao::create_password_login(&mut conn, &claims.iss, &email2, &password2).await;
+    let res = dao::create_password_login(&mut conn, &user_id, &email2, &password2).await;
     match res {
         Err(AuthError::ExistingLogin) => (),
         e => panic!("expected ExistingLogin, got {:?}",e),
@@ -75,6 +76,40 @@ async fn test_password_login() {
     super::routes::verify_pw(password,res.password).unwrap();
 
     db.drop_async().await;
+}
+
+#[actix_rt::test]
+async fn test_user_delete() {
+    // test user deletion
+    // - user existing, no crash
+    // - user not locked
+    // - tombstone is created
+    // testing for deleted_list_shared is done in sync::tests
+
+    let db = DatabaseGuard::new().await;
+    let mut conn = &mut *db.conn().await;
+
+    let(claims,key,key_type) = gen_user();
+    let user = UserId(claims.iss);
+    dao::register_user(&mut conn,&claims,&key,key_type.clone()).await.unwrap();
+
+    let(email,password) = gen_mail_pw();
+    let pw_hash = super::routes::hash_pw(password.clone()).unwrap();
+    dao::create_password_login(&mut conn, &user, &email, &pw_hash).await.unwrap();
+
+    dao::delete_user(&mut conn, &user).await.unwrap();
+
+    let res = dao::user_by_email(&mut conn,&email).await.unwrap();
+    assert!(res.is_none());
+
+    let res = dao::user_by_uuid(&mut conn, &user).await.unwrap();
+    assert!(res.is_none());
+
+    // tombstone exists
+    let res = dao::user_deleted(&mut conn,&user).await.unwrap();
+    assert_eq!(true,res);
+
+    db.drop_async().await;    
 }
 
 fn gen_mail_pw() -> (String,String) {

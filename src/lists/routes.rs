@@ -103,6 +103,7 @@ async fn create_entry(id: Identity, state: AppState, path: web::Path<(Uuid,)>, d
     Ok(HttpResponse::Ok().json(response.0))
 }
 
-fn get_user(id: Identity) -> Result<UserId> {
+/// Retrieve user from IDentity or error out
+fn get_user(id: actix_identity::Identity) -> Result<UserId> {
     Ok(UserId(Uuid::parse_str(&id.identity().ok_or(ListError::NotAuthenticated)?)?))
 }
