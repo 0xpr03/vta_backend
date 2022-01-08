@@ -107,13 +107,18 @@ CREATE TABLE IF NOT EXISTS list_permissions
 (
     user BINARY(16) NOT NULL,
     list BINARY(16) NOT NULL,
-    `change` BOOLEAN NOT NULL,
+    `write` BOOLEAN NOT NULL,
     reshare BOOLEAN NOT NULL,
+    changed DATETIME NOT NULL,
     PRIMARY KEY (list,user),
     INDEX (list),
-    INDEX (user,list,`change`),
+    INDEX (user,list,`write`),
     CONSTRAINT `fk_user_id_list_permissions`
         FOREIGN KEY (user) REFERENCES users (uuid)
+        ON DELETE CASCADE
+        ON UPDATE RESTRICT,
+    CONSTRAINT `fk_list_list_permissions`
+        FOREIGN KEY (list) REFERENCES lists (uuid)
         ON DELETE CASCADE
         ON UPDATE RESTRICT
 );

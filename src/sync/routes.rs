@@ -28,7 +28,7 @@ async fn list_sync_changed(reg: web::Json<ListChangedRequest>, id: Identity, sta
     let identity = id.identity();
     trace!(?identity,"list sync changed request");
     let user = Uuid::parse_str(&identity.ok_or(ListError::NotAuthenticated)?)?;
-    let response = dao::update_changed_lists(&mut *state.sql.acquire().await?, reg.into_inner(), &user).await?;
+    let response = dao::update_changed_lists(&mut *state.sql.acquire().await?, reg.into_inner(), &UserId(user)).await?;
     Ok(HttpResponse::Ok().json(response))
 }
 

@@ -39,6 +39,12 @@ async fn test_deleted_lists() {
     // one unknown list delete entry
     assert_eq!(1,res.unknown.len());
     assert!(res.unknown.contains(&del_req.lists[0].list));
+    // sanity check revisiting should give us a delta of 0
+    let empty_data_d = ListDeletedRequest{client: del_req.client.clone(), lists: Vec::new()};
+    let res = dao::update_deleted_lists(&mut conn, empty_data_d, &&user).await.unwrap();
+    assert_eq!(0,res.lists.len());
+    assert_eq!(0,res.unowned.len());
+    assert_eq!(0,res.unknown.len());
 
     // retrieve all changes as new client
     let empty_data = ListDeletedRequest{client: Uuid::new_v4(), lists: Vec::new()};
@@ -151,39 +157,4 @@ async fn test_deleted_lists_shared() {
     assert_ne!(None,res.lists.get(&del_req.lists[0].list));
 
     db.drop_async().await;
-}
-
-fn timestamp(ts: &str) -> Timestamp {
-    Timestamp::parse_from_str(ts, "%Y-%m-%d %H:%M:%S").unwrap()
-}
-
-async fn insert_list(sql: &mut DbConn, user: &Uuid, list: &ListChangedEntry) {
-    sqlx::query("INSERT INTO lists (owner,uuid,name,name_a,name_b,changed,created) VALUES(?,?,?,?,?,?,?)")
-        .bind(user).bind(list.uuid).bind(&list.name).bind(&list.name_a).bind(&list.name_b).bind(list.changed).bind(list.created)
-        .execute(sql)
-        .await.unwrap();
-}
-
-async fn insert_list_perm(sql: &mut DbConn, user: &Uuid, list: &Uuid,change: bool, reshare: bool) {
-    sqlx::query("INSERT INTO list_permissions (user,list,`change`,`reshare`) VALUES(?,?,?,?)")
-        .bind(user).bind(list).bind(change).bind(&reshare)
-        .execute(sql)
-        .await.unwrap();
-}
-
-fn gen_list(date: Option<&str>) -> ListChangedEntry {
-    let mut rng = rand::thread_rng();
-    let created = if let Some(date) = date {
-        timestamp(date)
-    } else {
-        random_naive_date(&mut rng,true)
-    };
-    ListChangedEntry {
-        uuid: Uuid::new_v4(),
-        name: random_string(&mut rng,7),
-        name_a: random_string(&mut rng,7),
-        name_b: random_string(&mut rng,7),
-        changed: created.clone(),
-        created: created,
-    }
 }

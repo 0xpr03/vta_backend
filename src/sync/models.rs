@@ -1,7 +1,9 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::hash::{Hash, Hasher};
 
+use super::InvalidPermissionError;
 use crate::prelude::*;
 
 pub enum LastSyncedKind {
@@ -61,14 +63,22 @@ impl PartialEq for ListDeleteEntry {
 }
 impl Eq for ListDeleteEntry {}
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ListChangedRequest {
     pub client: Uuid,
-    pub lists: Vec<ListChangedEntry>,
+    pub lists: Vec<ListChangedEntryRecv>,
 }
 
-#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
-pub struct ListChangedEntry {
+#[derive(Debug, Serialize, PartialEq)]
+pub enum ListPermissions {
+    Owner,
+    Read,
+    Write,
+}
+
+/// List change entry, received from clients
+#[derive(Debug, Deserialize, Clone)]
+pub struct ListChangedEntryRecv {
     pub uuid: Uuid,
     pub name: String,
     pub name_a: String,
@@ -77,16 +87,86 @@ pub struct ListChangedEntry {
     pub created: Timestamp,
 }
 
+/// List change entry, send to clients
+#[derive(Debug, Serialize)]
+pub struct ListChangedEntrySend {
+    pub permissions: ListPermissions,
+    pub uuid: Uuid,
+    pub name: String,
+    pub name_a: String,
+    pub name_b: String,
+    pub changed: Timestamp,
+    pub created: Timestamp,
+}
+
+use sqlx::Row;
+
+impl sqlx::FromRow<'_, sqlx::mysql::MySqlRow> for ListChangedEntrySend {
+    fn from_row(row: &sqlx::mysql::MySqlRow) -> sqlx::Result<Self> {
+        let p_t: i32 = row.try_get("permissions")?;
+        let permissions = match p_t {
+            -1 => ListPermissions::Owner,
+            0 => ListPermissions::Read,
+            1 => ListPermissions::Write,
+            x => return Err(sqlx::Error::Decode(Box::new(InvalidPermissionError{found: x}))),
+        };
+        Ok(ListChangedEntrySend {
+            permissions,
+            uuid: row.try_get("uuid")?,
+            name: row.try_get("name")?,
+            name_a: row.try_get("name_a")?,
+            name_b: row.try_get("name_b")?,
+            changed: row.try_get("changed")?,
+            created: row.try_get("created")?,
+        })
+    }
+}
+
+// // derived via macro expansion for sqlx::FromRow without the unsupported type
+// impl<'a, R: ::sqlx::Row> ::sqlx::FromRow<'a, R> for ListChangedEntry
+//     where
+//         &'a ::std::primitive::str: ::sqlx::ColumnIndex<R>,
+//         Uuid: ::sqlx::decode::Decode<'a, R::Database>,
+//         Uuid: ::sqlx::types::Type<R::Database>,
+//         String: ::sqlx::decode::Decode<'a, R::Database>,
+//         String: ::sqlx::types::Type<R::Database>,
+//         Timestamp: ::sqlx::decode::Decode<'a, R::Database>,
+//         Timestamp: ::sqlx::types::Type<R::Database>,
+//     {
+//         fn from_row(row: &'a R) -> ::sqlx::Result<Self> {
+//             let uuid: Uuid = row.try_get("uuid")?;
+//             let name: String = row.try_get("name")?;
+//             let name_a: String = row.try_get("name_a")?;
+//             let name_b: String = row.try_get("name_b")?;
+//             let changed: Timestamp = row.try_get("changed")?;
+//             let created: Timestamp = row.try_get("created")?;
+//             ::std::result::Result::Ok(ListChangedEntry {
+//                 uuid,
+//                 name,
+//                 name_a,
+//                 name_b,
+//                 changed,
+//                 created,
+//             })
+//         }
+//     }
+
+// impl sqlx::FromRow for ListChangedEntry {
+//     fn from_row(row: &Row) -> Result<ListChangedEntry> {
+
+//     }
+// }
+
 #[derive(Debug, Serialize)]
 pub struct ListChangedResponse {
-    pub lists: Vec<ListChangedEntry>,
+    pub lists: HashMap<Uuid,ListChangedEntrySend>,
     pub failures: Vec<EntrySyncFailure>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct EntrySyncFailure {
     pub id: Uuid,
-    pub error: String,
+    pub error: Cow<'static,str>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -1,3 +1,5 @@
+use std::fmt;
+
 use actix_web::{HttpResponse, ResponseError};
 use thiserror::Error;
 use crate::prelude::*;
@@ -37,3 +39,21 @@ impl ResponseError for ListError {
 }
 
 type Result<T> = std::result::Result<T,ListError>;
+
+/// Internal decoder for FromRow of ListPermission
+#[derive(Debug)]
+pub struct InvalidPermissionError{
+    pub found: i32
+}
+
+impl fmt::Display for InvalidPermissionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Invalid permission value {}!",self.found)
+    }
+}
+
+impl std::error::Error for InvalidPermissionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+}
