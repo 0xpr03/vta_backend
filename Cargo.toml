@@ -12,7 +12,7 @@ debug = 1
 # database setting storage
 base64 = "0.13"
 # session encryption key
-rand = "0.8.4"
+rand = {version = "0.8.4", features = ["std"]}
 # password stuff
 argon2 = {version = "0.3", features = ["std"] }
 rand_core = { version = "0.6", features = ["std"] }

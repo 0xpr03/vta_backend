@@ -1,4 +1,5 @@
 use chrono::{Duration, Utc};
+use rand::Rng;
 
 use crate::prelude::*;
 use crate::prelude::tests::*;
@@ -7,9 +8,26 @@ use super::*;
 
 mod deleted_lists;
 mod changed_lists;
+mod deleted_entries;
 
 fn timestamp(ts: &str) -> Timestamp {
     Timestamp::parse_from_str(ts, "%Y-%m-%d %H:%M:%S").unwrap()
+}
+
+/// Insert entries, test only
+async fn insert_entries(sql: &mut DbConn, entries: &[EntryChangedEntry]) {
+    for e in entries {
+        sqlx::query("INSERT INTO entries (list,uuid,changed,tip) VALUES (?,?,?,?)")
+            .bind(e.list).bind(e.uuid).bind(e.changed).bind(&e.tip)
+            .execute(&mut *sql)
+            .await.unwrap();
+
+        for m in e.meanings.iter() {
+            sqlx::query("INSERT INTO entry_meaning (entry,value,is_a) VALUES (?,?,?)")
+                .bind(e.uuid).bind(&m.value).bind(m.is_a)
+                .execute(&mut *sql).await.unwrap();
+        }
+    }
 }
 
 /// Insert list, test only
@@ -44,5 +62,29 @@ fn gen_list(date: Option<&str>) -> ListChangedEntryRecv {
         name_b: random_string(&mut rng,7),
         changed: created.clone(),
         created: created,
+    }
+}
+
+fn gen_entry(list: &Uuid, date: Option<&str>) -> EntryChangedEntry {
+    let mut rng = rand::thread_rng();
+    let created = if let Some(date) = date {
+        timestamp(date)
+    } else {
+        random_naive_date(&mut rng,true)
+    };
+
+    let mut v = Vec::new();
+    for _ in 0..rng.gen_range(0..10) {
+        v.push(Meaning {
+            value: random_string(&mut rng,7),
+            is_a: rng.gen(),
+        });
+    }
+    EntryChangedEntry {
+        uuid: Uuid::new_v4(),
+        changed: created,
+        list: list.clone(),
+        tip: random_string(&mut rng,7),
+        meanings: v,
     }
 }

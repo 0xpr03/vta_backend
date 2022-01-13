@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::hash::{Hash, Hasher};
 
@@ -159,7 +159,7 @@ impl sqlx::FromRow<'_, sqlx::mysql::MySqlRow> for ListChangedEntrySend {
 
 #[derive(Debug, Serialize)]
 pub struct ListChangedResponse {
-    pub lists: HashMap<Uuid,ListChangedEntrySend>,
+    pub delta: HashMap<Uuid,ListChangedEntrySend>,
     pub failures: Vec<EntrySyncFailure>,
 }
 
@@ -169,13 +169,13 @@ pub struct EntrySyncFailure {
     pub error: Cow<'static,str>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct EntryDeletedRequest {
     pub client: Uuid,
     pub entries: Vec<EntryDeleteEntry>,
 }
 
-#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
 pub struct EntryDeleteEntry {
     pub list: Uuid,
     pub entry: Uuid,
@@ -193,6 +193,13 @@ impl PartialEq for EntryDeleteEntry {
     }
 }
 impl Eq for EntryDeleteEntry {}
+
+#[derive(Debug, Serialize)]
+pub struct EntryDeletedResponse {
+    pub delta: HashMap<Uuid, EntryDeleteEntry>,
+    pub ignored: Vec<Uuid>,
+    pub invalid: Vec<Uuid>,
+}
 
 #[derive(Debug, Deserialize)]
 pub struct EntryChangedRequest {

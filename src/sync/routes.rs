@@ -37,7 +37,7 @@ async fn list_sync_changed(reg: web::Json<ListChangedRequest>, id: Identity, sta
 async fn entry_sync_del(reg: web::Json<EntryDeletedRequest>, id: Identity, state: AppState) -> Result<HttpResponse> {
     let identity = id.identity();
     trace!(?identity,"entry sync deleted request");
-    let user = Uuid::parse_str(&identity.ok_or(ListError::NotAuthenticated)?)?;
+    let user = UserId(Uuid::parse_str(&identity.ok_or(ListError::NotAuthenticated)?)?);
     let data = reg.into_inner();
 
     let response = dao::update_deleted_entries(&mut *state.sql.acquire().await?, data, &user).await?;

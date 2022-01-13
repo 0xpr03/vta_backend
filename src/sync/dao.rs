@@ -3,8 +3,6 @@ use std::collections::{HashSet, HashMap};
 use std::iter::repeat;
 use chrono::Utc;
 use futures::TryStreamExt;
-use futures::future;
-use futures::stream::{self, StreamExt};
 use rand::Rng;
 use rand::distributions::Alphanumeric;
 use sqlx::{Executor, MySqlConnection, Connection};
@@ -137,7 +135,7 @@ pub async fn update_changed_lists(sql: &mut MySqlConnection, data: ListChangedRe
     trace!(amount=return_lists.len(),"fetched return data");
     
     let mut failure = Vec::new();
-    let mut deleted: Vec<Uuid> = Vec::new();
+    let mut deleted: Vec<Uuid> = Vec::new();// TODO: use this actually in the return
     let sql_del_check = format!("SELECT 1 FROM deleted_list d WHERE d.list = ? AND d.user = ?
     UNION
     SELECT 1 FROM deleted_list_shared WHERE list = ? AND user = ?");
@@ -159,7 +157,7 @@ pub async fn update_changed_lists(sql: &mut MySqlConnection, data: ListChangedRe
             });
             continue;
         }
-        // remove deleted ones
+        // remove entries for deleted lists ones
         let res: Option<bool> = sqlx::query_scalar(sql_del_check.as_str())
             .bind(v.uuid)
             .bind(&user.0)
@@ -235,14 +233,12 @@ pub async fn update_changed_lists(sql: &mut MySqlConnection, data: ListChangedRe
 }
 
 //#[instrument(skip(state,data))]
-pub async fn update_deleted_entries(sql: &mut MySqlConnection, mut data: EntryDeletedRequest, user: &Uuid) -> Result<HashSet<EntryDeleteEntry>> {
+pub async fn update_deleted_entries(sql: &mut MySqlConnection, mut data: EntryDeletedRequest, user: &UserId) -> Result<EntryDeletedResponse> {
     let t_now = Utc::now().naive_utc();
 
     let mut transaction = sql.begin().await?;
-    
-    let last_synced: Option<Timestamp> = sqlx::query!("SELECT date FROM last_synced WHERE `type` = ? AND user_id = ? AND client = ? FOR UPDATE",
-        LastSyncedKind::EntriesDeleted as i32, user, &data.client)
-        .fetch_optional(&mut transaction).await.context("selecting last_synced")?.map(|v|v.date);
+
+    let last_synced = last_synced(&mut transaction, &user.0, &data.client, LastSyncedKind::EntriesDeleted).await?;
 
     // first retrieve deleted entries to send back
     let time_addition = if last_synced.is_some() {
@@ -261,97 +257,101 @@ pub async fn update_deleted_entries(sql: &mut MySqlConnection, mut data: EntryDe
         time = time_addition);
     let q = sqlx::query_as::<_,EntryDeleteEntry>(sql_fetch.as_str());
     let stream = match last_synced { // Not for update
-        Some(time) => q.bind(user).bind(time).bind(user).bind(time),
-        None => q.bind(user).bind(user)
+        Some(time) => q.bind(user.0).bind(time).bind(user.0).bind(time),
+        None => q.bind(user.0).bind(user.0)
     }.fetch(&mut transaction);
 
-    let mut return_lists: HashSet<EntryDeleteEntry> = stream.try_collect().await.context("fetching deleted_entry to send back")?;
-    trace!(affected=return_lists.len(),"fetched send-back");
-  
-    let mut rng = rand::thread_rng();
-    let table_name: String = format!("t_{}",repeat(())
-        .map(|()| rng.sample(Alphanumeric))
-        .map(char::from)
-        .take(7)
-        .collect::<String>());
-    
-    transaction.execute(format!("CREATE TEMPORARY TABLE {} (
-        uuid BINARY(16) NOT NULL PRIMARY KEY,
-        list BINARY(16) NOT NULL,
-        time BIGINT UNSIGNED NOT NULL,
-        INDEX (uuid,list)
-    )",table_name).as_str()).await.context("creating temp table")?;
-    // insert received delete entries into temp table
-    let sql_t = format!("INSERT INTO {tbl} (uuid,time,list) VALUES(?,?,?) ON DUPLICATE KEY UPDATE time=VALUES(time)",tbl= table_name);
-    for v in data.entries.iter_mut() {
-        if v.time > t_now {
-            info!(%v.time,%t_now,"ignoring change date in future");
-            v.time = t_now;
+    let mut return_delta: HashMap<Uuid,EntryDeleteEntry> = stream.map_ok(|v|(v.entry,v))
+        .try_collect().await.context("fetching deleted_entry to send back")?;
+    trace!(affected=return_delta.len(),"fetched send-back");
+
+    let sqlt_deleted_list = "SELECT 1 from `deleted_list` WHERE list = ?";
+    let sqlt_owner = "SELECT owner FROM lists WHERE uuid = ?";
+    let sqlt_perms_shared = "SELECT `write` FROM list_permissions WHERE list = ? AND user = ?";
+    let sqlt_delete_entry = "DELETE FROM entries WHERE uuid = ?";
+    let sqlt_tombstone = "INSERT INTO deleted_entry (list,`entry`,`time`) VALUES (?,?,?)";
+    let mut list_deleted = HashSet::new();
+    // map of lists and whether we have change permissions
+    let mut list_perm: HashMap<Uuid,bool> = HashMap::new();
+    let mut invalid = Vec::new();
+    let mut ignored = Vec::new();
+    for mut e in data.entries.into_iter() {
+        if e.time > t_now {
+            info!(%e.time,%t_now,"ignoring change date in future");
+            e.time = t_now;
         }
-        
         // remove entries from return data that we got already send
         // if not in return set, insert to temp table, otherwise known
-        if !return_lists.remove(v) {
-            sqlx::query(sql_t.as_str())
-            .bind(v.entry)
-            .bind(v.time)
-            .bind(v.list)
-            .execute(&mut transaction).await.context("inserting data to temp table")?;
+        if return_delta.remove(&e.entry).is_some() {
+            continue;
+        }
+        // check list not deleted
+        if list_deleted.contains(&e.list) {
+            ignored.push(e.entry);
+            continue;
+        }
+        let res = sqlx::query(sqlt_deleted_list)
+            .bind(e.list).fetch_optional(&mut transaction).await.context("fetching list deletion")?;
+        if res.is_some() {
+            list_deleted.insert(e.list);
+            ignored.push(e.entry);
+            continue;
+        }
+
+        // check permissions
+        if let Some(has_perm) = list_perm.get(&e.list) {
+            // cached value
+            match has_perm {
+                true => (),
+                false => {
+                    invalid.push(e.entry);
+                    continue;
+                }
+            }
+        } else {
+            let res: Option<Uuid> = sqlx::query_scalar(sqlt_owner)
+                    .bind(e.list).fetch_optional(&mut transaction).await.context("fetching list owner")?;
+            if let Some(owner) = res {
+                if owner != user.0 {
+                    // not owner, check for write perm
+                    let res: Option<bool> = sqlx::query_scalar(sqlt_perms_shared)
+                        .bind(e.list).bind(user.0).fetch_optional(&mut transaction)
+                            .await.context("fetching shared write perms")?;
+                    let has_perms = res == Some(true);
+                    // cache
+                    list_perm.insert(e.list.clone(),res == Some(true));
+                    if !has_perms {
+                        invalid.push(e.entry);
+                        continue;
+                    }
+                } else {
+                    // cache
+                    list_perm.insert(e.list.clone(),true);
+                }
+            }
+        }
+
+        // delete entry
+        let res = sqlx::query(sqlt_delete_entry).bind(e.entry)
+            .execute(&mut transaction).await.context("deleting entry")?;
+        if res.rows_affected() != 0 {
+            // tombstone only for existing entries
+            sqlx::query(sqlt_tombstone).bind(e.list).bind(e.entry).bind(e.time)
+                .execute(&mut transaction).await.context("inserting tombstone")?;
+        } else {
+            ignored.push(e.entry);
         }
     }
 
-    // remove entries for lists that are already deleted
-    let sqlt_tdel = format!("DELETE FROM {tbl} WHERE list IN (SELECT list from `deleted_list`)",tbl = table_name);
-    let sql_res = sqlx::query(sqlt_tdel.as_str())
-        .execute(&mut transaction).await.context("removing entries for deleted lists")?;
-    trace!(affected=sql_res.rows_affected(),"removed entries from already deleted lists");
-
-    // remove all non-existing/non-owner lists from temp table
-    let sqlt_del_nonowned = format!("DELETE FROM {tbl} WHERE list NOT IN (
-        SELECT l.uuid FROM lists l
-        WHERE `{tbl}`.list = l.uuid AND l.owner = ?
-        UNION
-        SELECT p.list FROM list_permissions p
-        WHERE p.list = `{tbl}`.list AND p.`write` = true AND p.user = ?)", tbl = table_name);
-    let sql_res = sqlx::query(sqlt_del_nonowned.as_str())
-        .bind(user)
-        .bind(user)
-        .execute(&mut transaction).await.context("removing entries without list permissions")?;
-    trace!(affected=sql_res.rows_affected(),"removed entries without permission / existing list");
-
-    // insert remaining new data from temp table into deleted_entry
-    let query_upsert = format!("INSERT INTO deleted_entry (entry,list,time)
-        SELECT uuid,list,time FROM `{tbl}`",tbl = table_name);
-    let sql_res = sqlx::query(query_upsert.as_str()).execute(&mut transaction).await.context("inserting back deleted entries")?;
-    trace!(affected=sql_res.rows_affected(),"inserted into deleted_entry");
-
-    // delete from entries
-    // retrieve entries to delete via faster method
-    let del_ids: Vec<FetchUuid> = sqlx::query_as::<_,FetchUuid>(format!("SELECT uuid FROM `{tbl}`",tbl=table_name).as_str())
-            .fetch(&mut transaction).try_collect().await.context("fetching delete ids")?;
-    let mut affected = 0;
-    for id in del_ids.into_iter() {
-        let sql_res = sqlx::query("DELETE FROM entries WHERE uuid = ?")
-            .bind(id.uuid)
-            .execute(&mut transaction).await.context("inserting back deleted entries")?;
-        affected += sql_res.rows_affected();
-    }
-    trace!(affected=affected,"deleted entries");
-
-    // let query_upsert = format!("DELETE FROM entries WHERE uuid IN
-    //     (SELECT uuid FROM `{tbl}`)",tbl = table_name);
-    // let sql_res = sqlx::query(query_upsert.as_str()).execute(&mut transaction).await.context("inserting back deleted entries")?;
-    // trace!(affected=sql_res.rows_affected(),"deleted entries");
-
-    sqlx::query!("INSERT INTO last_synced (user_id,client,type,date) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE date=VALUES(date)",
-        user,&data.client,LastSyncedKind::EntriesDeleted as i32,t_now)
-        .execute(&mut transaction).await.context("updating last_synced time")?;
-
-    transaction.execute(format!("DROP TABLE {}",table_name).as_str()).await.context("dropping temp table")?;
+    update_last_synced(&mut transaction, &user.0, &data.client, LastSyncedKind::EntriesDeleted, t_now).await?;
 
     transaction.commit().await?;
 
-    Ok(return_lists)
+    Ok(EntryDeletedResponse {
+        delta: return_delta,
+        ignored, 
+        invalid,
+    })
 }
 
 //#[instrument(skip(state,data))]
@@ -516,9 +516,10 @@ pub async fn update_changed_entries(sql: &mut MySqlConnection, mut data: EntryCh
 }
 
 async fn last_synced(sql: &mut MySqlConnection, user: &Uuid, client: &Uuid, kind: LastSyncedKind) -> Result<Option<Timestamp>> {
-    let last_synced: Option<Timestamp> = sqlx::query!("SELECT date FROM last_synced WHERE `type` = ? AND user_id = ? AND client = ? FOR UPDATE",
-        kind as i32, user, client)
-        .fetch_optional(sql).await.context("selecting last_synced")?.map(|v|v.date);
+    let last_synced: Option<Timestamp> = sqlx::query_scalar("SELECT date FROM last_synced WHERE `type` = ? AND user_id = ? AND client = ? FOR UPDATE")
+        .bind(kind as i32).bind(user).bind(client)
+        .fetch_optional(sql).await.context("selecting last_synced")?;
+        // .map(|v|v.date);
 
     Ok(last_synced)
 }
