@@ -93,7 +93,7 @@ pub async fn update_deleted_lists(sql: &mut DbConn, data: ListDeletedRequest, us
     transaction.commit().await?;
 
     Ok(ListDeletedResponse {
-        lists: return_lists,
+        delta: return_lists,
         unowned,
         unknown,
     })
@@ -224,7 +224,7 @@ pub async fn update_changed_lists(sql: &mut MySqlConnection, data: ListChangedRe
 
     trace!("Found {} changes to send back, failures {}", return_lists.len(),failure.len());
     let response = ListChangedResponse {
-        lists: return_lists,
+        delta: return_lists,
         failures: failure
     };
     

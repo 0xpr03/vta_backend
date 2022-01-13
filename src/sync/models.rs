@@ -38,7 +38,7 @@ pub struct ListDeletedRequest {
 #[derive(Debug, Serialize)]
 pub struct ListDeletedResponse {
     /// Delta of deleted lists for the client to store
-    pub lists: HashMap<Uuid,ListDeleteEntry>,
+    pub delta: HashMap<Uuid,ListDeleteEntry>,
     /// Lists that the server didn't know, thus no tombstone stored
     pub unknown: Vec<Uuid>,
     /// Lists for which the client doesn't have owner rights to delete them
