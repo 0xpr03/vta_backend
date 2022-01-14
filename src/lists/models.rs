@@ -4,7 +4,6 @@ use crate::prelude::*;
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct List {
-    pub id: Uuid,
     pub uuid: Uuid,
     pub name: String,
     pub name_a: String,
@@ -27,7 +26,7 @@ pub struct EntryMeaning {
     pub is_a: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ListChange {
     pub name: String,
     pub name_a: String,

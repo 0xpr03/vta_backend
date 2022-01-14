@@ -20,7 +20,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
 async fn all_lists(id: Identity, state: AppState) -> Result<HttpResponse> {
     let user = get_user(id)?;
 
-    let response = dao::all_lists(&mut *state.sql.acquire().await?, user).await?;
+    let response = dao::all_lists(&mut *state.sql.acquire().await?, &user).await?;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -57,7 +57,7 @@ async fn create_list(id: Identity, state: AppState, reg: web::Json<ListCreate>) 
     let user = get_user(id)?;
     let data = reg.into_inner();
 
-    let response = dao::create_list(&mut *state.sql.acquire().await?, user, data).await?;
+    let response = dao::create_list(&mut *state.sql.acquire().await?, &user, data).await?;
     Ok(HttpResponse::Ok().json(response.0))
 }
 

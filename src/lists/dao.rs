@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use chrono::Utc;
 use futures::TryStreamExt;
 use sqlx::{MySqlConnection, Connection};
@@ -7,14 +9,14 @@ use super::*;
 use super::models::*;
 
 // #[instrument(skip(state,data))]
-pub async fn all_lists(sql: &mut MySqlConnection, user: UserId) -> Result<Vec<List>> {
-    let sql_fetch = "SELECT uuid,name,name_a,name_b,0,0 FROM lists l WHERE l.owner = ?
-    UNION SELECT uuid,name,name_a,name_b,1,write FROM lists l
+pub async fn all_lists(sql: &mut MySqlConnection, user: &UserId) -> Result<HashMap<Uuid,List>> {
+    let sql_fetch = "SELECT uuid,name,name_a,name_b,0 as `foreign`,0 as `change` FROM lists l WHERE l.owner = ?
+    UNION SELECT uuid,name,name_a,name_b,1,`write` FROM lists l
     JOIN list_permissions p ON p.list = l.uuid
     WHERE p.user = ?";
-    let lists: Vec<List> = sqlx::query_as::<_,List>(sql_fetch)
+    let lists: HashMap<Uuid,List> = sqlx::query_as::<_,List>(sql_fetch)
         .bind(user.0).bind(user.0).fetch(sql)
-        .try_collect().await.context("fetching fetching lists")?;
+        .map_ok(|v|(v.uuid,v)).try_collect().await.context("fetching fetching lists")?;
 
     Ok(lists)
 }
@@ -52,7 +54,7 @@ pub async fn change_list(sql: &mut MySqlConnection, user: UserId, list: ListId, 
     Ok(())
 }
 
-pub async fn create_list(sql: &mut MySqlConnection, user: UserId, data: ListCreate) -> Result<ListId> {
+pub async fn create_list(sql: &mut MySqlConnection, user: &UserId, data: ListCreate) -> Result<ListId> {
     let t_now = Utc::now().naive_utc();
     let list = Uuid::new_v4();
     let sql_create = "INSERT INTO lists (owner,uuid,name,name_a,name_b,changed,created) VALUES(?,?,?,?,?,?,?)";
