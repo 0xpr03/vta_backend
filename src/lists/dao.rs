@@ -22,14 +22,18 @@ pub async fn all_lists(sql: &mut MySqlConnection, user: &UserId) -> Result<HashM
 }
 
 // #[instrument(skip(state,data))]
-pub async fn single_list(sql: &mut MySqlConnection, user: UserId, list: ListId) -> Result<List> {
+pub async fn single_list(sql: &mut MySqlConnection, user: &UserId, list: &ListId) -> Result<List> {
     if !has_list_perm(&mut *sql,&user,&list,Permission::READ).await? {
         return Err(ListError::ListPermission);
     }
-    let sql_fetch = "SELECT uuid,name,name_a,name_b,0,0 FROM lists
-    WHERE uuid = ?";
+    // FIXME: we're requesting the permission data indirectly in list-perm check already
+    let sql_fetch = "SELECT uuid,name,name_a,name_b,0 as `foreign`,0 as `change`
+    FROM lists l WHERE l.owner = ? AND l.uuid = ?
+    UNION SELECT uuid,name,name_a,name_b,1,`write` FROM lists l
+    JOIN list_permissions p ON p.list = l.uuid
+    WHERE p.user = ? AND l.uuid = ?";
     let lists: List = sqlx::query_as::<_,List>(sql_fetch)
-        .bind(user.0).bind(user.0).fetch_one(sql)
+        .bind(user.0).bind(list.0).bind(user.0).bind(list.0).fetch_one(sql)
         .await.context("fetching fetching lists")?;
 
     Ok(lists)

@@ -29,7 +29,7 @@ async fn single_list(id: Identity, state: AppState, path: web::Path<(Uuid,)>) ->
     let user = get_user(id)?;
     let (list,) = path.into_inner();
 
-    let response = dao::single_list(&mut *state.sql.acquire().await?, user, ListId(list)).await?;
+    let response = dao::single_list(&mut *state.sql.acquire().await?, &user, &ListId(list)).await?;
     Ok(HttpResponse::Ok().json(response))
 }
 
