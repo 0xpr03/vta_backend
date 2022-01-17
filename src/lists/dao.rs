@@ -14,6 +14,7 @@ pub async fn all_lists(sql: &mut MySqlConnection, user: &UserId) -> Result<HashM
     UNION SELECT uuid,name,name_a,name_b,1,`write` FROM lists l
     JOIN list_permissions p ON p.list = l.uuid
     WHERE p.user = ?";
+    // TODO: return is_shared
     let lists: HashMap<Uuid,List> = sqlx::query_as::<_,List>(sql_fetch)
         .bind(user.0).bind(user.0).fetch(sql)
         .map_ok(|v|(v.uuid,v)).try_collect().await.context("fetching fetching lists")?;
@@ -32,11 +33,28 @@ pub async fn single_list(sql: &mut MySqlConnection, user: &UserId, list: &ListId
     UNION SELECT uuid,name,name_a,name_b,1,`write` FROM lists l
     JOIN list_permissions p ON p.list = l.uuid
     WHERE p.user = ? AND l.uuid = ?";
+    // TODO: return is_shared
     let lists: List = sqlx::query_as::<_,List>(sql_fetch)
         .bind(user.0).bind(list.0).bind(user.0).bind(list.0).fetch_one(sql)
         .await.context("fetching fetching lists")?;
 
     Ok(lists)
+}
+
+// #[instrument(skip(state,data))]
+pub async fn list_sharing(sql: &mut MySqlConnection, user: &UserId, list: &ListId) -> Result<HashMap<Uuid,SharedUser>> {
+    if !has_list_perm(&mut *sql,&user,&list,Permission::OWNER).await? {
+        return Err(ListError::ListPermission);
+    }
+    let sql_fetch = "SELECT u.uuid,name,`write`,`reshare` FROM list_permissions p
+    JOIN users u ON p.user = u.uuid
+    WHERE p.list = ?";
+    let users = sqlx::query_as::<_,SharedUser>(sql_fetch)
+        .bind(list.0).fetch(sql)
+        .map_ok(|v|(v.uuid,v)).try_collect()
+        .await.context("fetching shared users")?;
+
+    Ok(users)
 }
 
 pub async fn change_list(sql: &mut MySqlConnection, user: UserId, list: ListId, data: ListChange) -> Result<()> {

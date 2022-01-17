@@ -12,6 +12,14 @@ pub struct List {
     pub change: bool,
 }
 
+/// A user with which a list is shared
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct SharedUser {
+    pub uuid: Uuid,
+    pub name: String,
+    pub write: bool,
+    pub reshare: bool,
+}
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct ListEntry {

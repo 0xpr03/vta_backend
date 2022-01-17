@@ -6,6 +6,7 @@ use super::*;
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(all_lists)
         .service(single_list)
+        .service(list_sharing_info)
         .service(change_list)
         .service(delete_list)
         .service(create_list)
@@ -30,6 +31,16 @@ async fn single_list(id: Identity, state: AppState, path: web::Path<(Uuid,)>) ->
     let (list,) = path.into_inner();
 
     let response = dao::single_list(&mut *state.sql.acquire().await?, &user, &ListId(list)).await?;
+    Ok(HttpResponse::Ok().json(response))
+}
+
+/// List sharing data, owner only
+#[get("/api/v1/lists/{list}/sharing")]
+async fn list_sharing_info(id: Identity, state: AppState, path: web::Path<(Uuid,)>) -> Result<HttpResponse> {
+    let user = get_user(id)?;
+    let (list,) = path.into_inner();
+
+    let response = dao::list_sharing(&mut *state.sql.acquire().await?, &user, &ListId(list)).await?;
     Ok(HttpResponse::Ok().json(response))
 }
 
