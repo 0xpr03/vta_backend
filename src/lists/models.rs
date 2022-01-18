@@ -21,11 +21,10 @@ pub struct SharedUser {
     pub reshare: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
-pub struct ListEntry {
-    pub id: Uuid,
-    pub tip: String,
-    pub meanings: Vec<EntryMeaning>,
+#[derive(Debug, Deserialize)]
+pub struct UserPermissions {
+    pub write: bool,
+    pub reshare: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]

@@ -7,6 +7,8 @@ pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(all_lists)
         .service(single_list)
         .service(list_sharing_info)
+        .service(list_sharing_remove_user)
+        .service(list_sharing_change_perms)
         .service(change_list)
         .service(delete_list)
         .service(create_list)
@@ -42,6 +44,27 @@ async fn list_sharing_info(id: Identity, state: AppState, path: web::Path<(Uuid,
 
     let response = dao::list_sharing(&mut *state.sql.acquire().await?, &user, &ListId(list)).await?;
     Ok(HttpResponse::Ok().json(response))
+}
+
+/// List sharing data, owner only
+#[delete("/api/v1/lists/{list}/sharing/{user}")]
+async fn list_sharing_remove_user(id: Identity, state: AppState, path: web::Path<(Uuid,Uuid)>) -> Result<HttpResponse> {
+    let user = get_user(id)?;
+    let (list,shared_user) = path.into_inner();
+
+    dao::remove_sharing_user(&mut *state.sql.acquire().await?, &user, &ListId(list), &UserId(shared_user)).await?;
+    Ok(HttpResponse::Ok().finish())
+}
+
+/// Update user permissions
+#[post("/api/v1/lists/{list}/sharing/{user}")]
+async fn list_sharing_change_perms(id: Identity, state: AppState, path: web::Path<(Uuid,Uuid)>, reg: web::Json<UserPermissions>) -> Result<HttpResponse> {
+    let user = get_user(id)?;
+    let (list,shared_user) = path.into_inner();
+    let perms = reg.into_inner();
+
+    dao::set_share_permissions(&mut *state.sql.acquire().await?, &user, &ListId(list),&UserId(shared_user),perms.write,perms.reshare).await?;
+    Ok(HttpResponse::Ok().finish())
 }
 
 #[delete("/api/v1/lists/{list}")]

@@ -57,6 +57,33 @@ pub async fn list_sharing(sql: &mut MySqlConnection, user: &UserId, list: &ListI
     Ok(users)
 }
 
+// #[instrument(skip(state,data))]
+pub async fn remove_sharing_user(sql: &mut MySqlConnection, user: &UserId, list: &ListId,shared_user: &UserId) -> Result<()> {
+    if !has_list_perm(&mut *sql,&user,&list,Permission::OWNER).await? {
+        return Err(ListError::ListPermission);
+    }
+    let sql_del = "DELETE FROM list_permissions p
+    WHERE p.list = ? AND p.user = ?";
+    let res = sqlx::query(sql_del)
+        .bind(list.0).bind(shared_user.0).execute(sql)
+        .await.context("fetching shared users")?;
+    trace!(affected=res.rows_affected(),"removed user from shared access");
+    Ok(())
+}
+
+pub async fn set_share_permissions(sql: &mut MySqlConnection, user: &UserId, list: &ListId,shared_user: &UserId, write: bool, reshare: bool) -> Result<()> {
+    if !has_list_perm(&mut *sql,&user,&list,Permission::OWNER).await? {
+        return Err(ListError::ListPermission);
+    }
+    let sql_del = "UPDATE list_permissions SET `write` = ?, `reshare` = ?
+    WHERE p.list = ? AND p.user = ?";
+    let res = sqlx::query(sql_del)
+        .bind(write).bind(reshare).bind(list.0).bind(shared_user.0).execute(sql)
+        .await.context("fetching shared users")?;
+    trace!(affected=res.rows_affected(),"changed shared user access");
+    Ok(())
+}
+
 pub async fn change_list(sql: &mut MySqlConnection, user: UserId, list: ListId, data: ListChange) -> Result<()> {
     let t_now = Utc::now().naive_utc();
     // TODO: what happens if this change is behind the last-change date in the DB for this list?
