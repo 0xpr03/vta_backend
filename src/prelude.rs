@@ -10,6 +10,26 @@ pub use color_eyre::eyre::Context;
 pub use serde::{Deserialize, Serialize};
 pub use crate::state::AppState;
 
+/// Check query result for duplicate-entry error. Returns true if found.
+pub fn check_duplicate(res: std::result::Result<sqlx::mysql::MySqlQueryResult, sqlx::Error>) -> std::result::Result<bool,sqlx::Error> {
+    if let Err(e) = res {
+        if let sqlx::Error::Database(ref e) = e {
+            if e.code() == Some(std::borrow::Cow::Borrowed("23000")) {
+                return Ok(true);
+            }
+        }
+        return Err(e.into());
+    } else {
+        return Ok(false)
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct ErrorResponse {
+    pub code: i32,
+    pub message: &'static str,
+}
+
 pub struct ListId(pub Uuid);
 pub struct EntryId(pub Uuid);
 pub struct UserId(pub Uuid);
@@ -127,7 +147,7 @@ pub mod tests {
         /// Has to be called manually, hack due to problem with async in drop code
         pub async fn drop_async(self) {
             sqlx::query(format!("DROP DATABASE IF EXISTS `{}`",self.db_name).as_str())
-                .execute(&mut *self.db.begin().await.unwrap()).await.unwrap();
+                .execute(&mut *self.db.acquire().await.unwrap()).await.unwrap();
         }
     }
     

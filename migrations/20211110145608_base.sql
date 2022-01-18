@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS password_reset
     user_id BINARY(16) NOT NULL,
     token_a VARCHAR(30) NOT NULL UNIQUE,
     created DATETIME NOT NULL DEFAULT current_timestamp(),
-    hash BINARY(32),
+    `hash` BINARY(32),
     UNIQUE INDEX `user_token` (`user_id`,`token_a`),
     INDEX `created` (`created`),
     CONSTRAINT `fk_user_id_pass`
@@ -118,6 +118,22 @@ CREATE TABLE IF NOT EXISTS list_permissions
         ON DELETE CASCADE
         ON UPDATE RESTRICT,
     CONSTRAINT `fk_list_list_permissions`
+        FOREIGN KEY (list) REFERENCES lists (uuid)
+        ON DELETE CASCADE
+        ON UPDATE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS share_token
+(
+    list BINARY(16) NOT NULL,
+    token_a BINARY(16) NOT NULL PRIMARY KEY,
+    deadline DATETIME NOT NULL,
+    `hash` BINARY(32),
+    `write` BOOLEAN NOT NULL,
+    reshare BOOLEAN NOT NULL,
+    reusable BOOLEAN NOT NULL,
+    INDEX `outdateds` (`deadline`),
+    CONSTRAINT `fk_share_token_list`
         FOREIGN KEY (list) REFERENCES lists (uuid)
         ON DELETE CASCADE
         ON UPDATE RESTRICT

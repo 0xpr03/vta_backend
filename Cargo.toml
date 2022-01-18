@@ -2,7 +2,7 @@
 name = "vta_sync_backend"
 version = "0.1.0"
 edition = "2018"
-
+rust-version = "1.57"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [profile.release]
@@ -16,6 +16,10 @@ rand = {version = "0.8.4", features = ["std"]}
 # password stuff
 argon2 = {version = "0.3", features = ["std"] }
 rand_core = { version = "0.6", features = ["std"] }
+# auth code hashing and constant time verification
+sha2 = "0.10"
+base64ct = "1" # can't go above 1.1 due to argon2 deps
+subtle = "2.4" # constant time comparison
 # errors
 color-eyre = "0.5"
 thiserror = "1"
@@ -56,3 +60,12 @@ features = ["serde", "std"]
 [dependencies.config]
 version = "0.11"
 features = [ "toml","ini"]
+
+[profile.dev.package.subtle]
+opt-level = 3
+[profile.dev.package.sha2]
+opt-level = 3
+[profile.dev.package.base64ct]
+opt-level = 3
+[profile.dev.package.argon2]
+opt-level = 3

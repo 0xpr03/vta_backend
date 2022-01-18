@@ -24,6 +24,12 @@ pub enum ListError {
     ListPermission,
     #[error("list not existing")]
     ListNotFound,
+    #[error("sharecode invalid")]
+    SharecodeInvalid,
+    #[error("sharecode outdated")]
+    SharecodeOutdated,
+    #[error("Failed to validate field {}",0)]
+    ValidationError(&'static str)
 }
 
 impl ResponseError for ListError {
@@ -31,6 +37,9 @@ impl ResponseError for ListError {
         trace!(?self);
         match self {
             ListError::Serde(_) => HttpResponse::BadRequest().reason("invalid payload").finish(),
+            ListError::ListNotFound => HttpResponse::NotFound().reason("invalid list").finish(),
+            ListError::SharecodeInvalid => HttpResponse::NotFound().reason("invalid").finish(),
+            ListError::ListPermission => HttpResponse::Forbidden().reason("missing permissions for list").finish(),
             ListError::NotAuthenticated => HttpResponse::Unauthorized().finish(),
             e => {
                 error!("{}",e);

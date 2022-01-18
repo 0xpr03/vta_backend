@@ -1,8 +1,16 @@
 use std::collections::HashMap;
 
+use base64ct::Base64Url;
 use chrono::Utc;
 use futures::TryStreamExt;
+use rand_core::RngCore;
+use sha2::Sha256;
+use sha2::Digest;
+use sqlx::MySql;
+use sqlx::Transaction;
 use sqlx::{MySqlConnection, Connection};
+use base64ct::Encoding;
+use subtle::ConstantTimeEq;
 
 use crate::prelude::*;
 use super::*;
@@ -71,17 +79,115 @@ pub async fn remove_sharing_user(sql: &mut MySqlConnection, user: &UserId, list:
     Ok(())
 }
 
-pub async fn set_share_permissions(sql: &mut MySqlConnection, user: &UserId, list: &ListId,shared_user: &UserId, write: bool, reshare: bool) -> Result<()> {
+pub async fn set_share_permissions(sql: &mut MySqlConnection, user: &UserId, list: &ListId,shared_user: &UserId, perms: UserPermissions) -> Result<()> {
     if !has_list_perm(&mut *sql,&user,&list,Permission::OWNER).await? {
         return Err(ListError::ListPermission);
     }
     let sql_del = "UPDATE list_permissions SET `write` = ?, `reshare` = ?
     WHERE p.list = ? AND p.user = ?";
     let res = sqlx::query(sql_del)
-        .bind(write).bind(reshare).bind(list.0).bind(shared_user.0).execute(sql)
+        .bind(perms.write).bind(perms.reshare).bind(list.0).bind(shared_user.0).execute(sql)
         .await.context("fetching shared users")?;
     trace!(affected=res.rows_affected(),"changed shared user access");
     Ok(())
+}
+
+pub async fn generate_share_code(sql: &mut MySqlConnection, user: &UserId, list: &ListId, data: NewTokenData) -> Result<ShareTokenReturn> {
+    if !has_list_perm(&mut *sql,&user,&list,Permission::OWNER).await? {
+        return Err(ListError::ListPermission);
+    }
+
+    let mut rng = rand::thread_rng();
+
+    let mut token_a = [0u8; 16];
+    rng.fill_bytes(&mut token_a);
+    let mut token_b = [0u8;16];
+    rng.fill_bytes(&mut token_b);
+
+    let token_b_hash = {        
+        let mut hasher = Sha256::new();
+        hasher.update(token_b);
+        hasher.finalize()
+    };
+    debug_assert_eq!(token_b_hash.len(),32);
+    debug_assert_eq!(token_a.len(),16);
+    
+    let sql_token = "INSERT INTO share_token (list,token_a,deadline,hash,`write`,reshare,reusable) VALUES(?,?,?,?,?,?,?)";
+    sqlx::query(sql_token).bind(list.0).bind(token_a.as_slice())
+        .bind(data.deadline).bind(token_b_hash.as_slice()).bind(data.write)
+        .bind(data.reshare).bind(data.reusable)
+        .execute(sql).await.context("inserting sharing token")?;
+    Ok(ShareTokenReturn{
+        token_a: Base64Url::encode_string(token_a.as_slice()),
+        token_b: Base64Url::encode_string(token_b.as_slice()),
+    })
+}
+
+pub async fn use_share_code(sql: &mut MySqlConnection, user: &UserId, token_a: &str, token_b: &str) -> Result<ListId> {
+    let mut transaction = sql.begin().await?;
+    let res = _use_share_code(&mut transaction, user, token_a, token_b).await;
+    if res.is_ok() {
+        transaction.commit().await?;
+    } else {
+        transaction.rollback().await?;
+    }
+    res
+}
+
+async fn _use_share_code(sql: &mut Transaction<'_, MySql>, user: &UserId, token_a: &str, token_b: &str) -> Result<ListId> {
+    let sql_sel = "SELECT list,deadline,hash,`write`,reshare,reusable FROM share_token WHERE token_a = ?";
+    let time = Utc::now().naive_utc();
+    
+    let token_a_decoded = match Base64Url::decode_vec(token_a) {
+        Ok(v) => v,
+        Err(_) => return Err(ListError::ValidationError("token_a")),
+    };
+    let res: Option<ShareTokenEntry> = sqlx::query_as::<_,ShareTokenEntry>(sql_sel)
+        .bind(&token_a_decoded).fetch_optional(&mut *sql).await.context("fetching share token")?;
+    match res {
+        None => Err(ListError::SharecodeInvalid),
+        Some(entry) => {
+            if time > entry.deadline {
+                return Err(ListError::SharecodeOutdated);
+            }
+
+            let token_b_decoded = match Base64Url::decode_vec(token_b) {
+                Ok(v) => v,
+                Err(e) => {
+                    debug!(?e,"base64 decode failed");
+                    return Err(ListError::ValidationError("token_b"))
+                },
+            };
+            debug_assert_eq!(token_b_decoded.len(),16);
+            let token_b_hash = {
+                let mut hasher = Sha256::new();
+                hasher.update(token_b_decoded);
+                hasher.finalize()
+            };
+            debug_assert_eq!(token_b_hash.len(),32);
+            // We don't need more than constant time verification of the hash
+            if entry.hash.as_slice().ct_eq(token_b_hash.as_slice()).unwrap_u8() != 1u8 {
+                return Err(ListError::SharecodeInvalid)
+            }
+            
+            // TODO: handle user is owner
+            let sql_add = "INSERT INTO list_permissions (user,list,`write`,reshare,changed) VALUES (?,?,?,?,?)";
+            let res = sqlx::query(sql_add)
+            .bind(user.0).bind(&entry.list).bind(entry.write).bind(entry.reshare).bind(time)
+            .execute(&mut *sql).await;
+            if check_duplicate(res)? {
+                // TODO: handle already accessible list
+                return Ok(ListId(entry.list));
+            }
+
+            if !entry.reusable {
+                let sql_del_code = "DELETE FROM share_token WHERE token_a = ?";
+                sqlx::query(sql_del_code).bind(&token_a_decoded)
+                .execute(&mut *sql).await.context("removing share code")?;
+            }
+            Ok(ListId(entry.list))
+        }
+    }
 }
 
 pub async fn change_list(sql: &mut MySqlConnection, user: UserId, list: ListId, data: ListChange) -> Result<()> {

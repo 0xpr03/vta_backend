@@ -1,5 +1,5 @@
 use actix_identity::Identity;
-use actix_web::{HttpResponse, get, post, delete, web};
+use actix_web::{HttpResponse, get, post, delete, web, put};
 use super::models::*;
 use super::*;
 
@@ -7,6 +7,8 @@ pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(all_lists)
         .service(single_list)
         .service(list_sharing_info)
+        .service(list_sharing_use)
+        .service(list_sharing_add)
         .service(list_sharing_remove_user)
         .service(list_sharing_change_perms)
         .service(change_list)
@@ -57,13 +59,34 @@ async fn list_sharing_remove_user(id: Identity, state: AppState, path: web::Path
 }
 
 /// Update user permissions
-#[post("/api/v1/lists/{list}/sharing/{user}")]
+#[put("/api/v1/lists/{list}/sharing/{user}")]
 async fn list_sharing_change_perms(id: Identity, state: AppState, path: web::Path<(Uuid,Uuid)>, reg: web::Json<UserPermissions>) -> Result<HttpResponse> {
     let user = get_user(id)?;
     let (list,shared_user) = path.into_inner();
     let perms = reg.into_inner();
 
-    dao::set_share_permissions(&mut *state.sql.acquire().await?, &user, &ListId(list),&UserId(shared_user),perms.write,perms.reshare).await?;
+    dao::set_share_permissions(&mut *state.sql.acquire().await?, &user, &ListId(list),&UserId(shared_user),perms).await?;
+    Ok(HttpResponse::Ok().finish())
+}
+
+/// Create auth code for sharing
+#[post("/api/v1/lists/{list}/share")]
+async fn list_sharing_add(id: Identity, state: AppState, path: web::Path<(Uuid,)>, reg: web::Json<NewTokenData>) -> Result<HttpResponse> {
+    let user = get_user(id)?;
+    let (list,) = path.into_inner();
+    let perms = reg.into_inner();
+
+    dao::generate_share_code(&mut *state.sql.acquire().await?, &user, &ListId(list),perms).await?;
+    Ok(HttpResponse::Ok().finish())
+}
+
+/// Use auth code for list sharing
+#[post("/api/v1/lists/share/{code}/{secret}")]
+async fn list_sharing_use(id: Identity, state: AppState, path: web::Path<(String,String)>) -> Result<HttpResponse> {
+    let user = get_user(id)?;
+    let (code,secret) = path.into_inner();
+
+    dao::use_share_code(&mut *state.sql.acquire().await?, &user, &code,&secret).await?;
     Ok(HttpResponse::Ok().finish())
 }
 
