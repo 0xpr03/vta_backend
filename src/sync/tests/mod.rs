@@ -1,4 +1,4 @@
-use chrono::{Duration, Utc};
+use chrono::{Duration, Utc, NaiveDateTime};
 use rand::Rng;
 
 use crate::prelude::*;
@@ -9,6 +9,7 @@ use super::*;
 mod deleted_lists;
 mod changed_lists;
 mod deleted_entries;
+mod changed_entries;
 
 fn timestamp(ts: &str) -> Timestamp {
     Timestamp::parse_from_str(ts, "%Y-%m-%d %H:%M:%S").unwrap()
@@ -65,10 +66,10 @@ fn gen_list(date: Option<&str>) -> ListChangedEntryRecv {
     }
 }
 
-fn gen_entry(list: &Uuid, date: Option<&str>) -> EntryChangedEntry {
+fn gen_entry(list: &Uuid, date: Option<NaiveDateTime>) -> EntryChangedEntry {
     let mut rng = rand::thread_rng();
     let created = if let Some(date) = date {
-        timestamp(date)
+        date
     } else {
         random_naive_date(&mut rng,true)
     };

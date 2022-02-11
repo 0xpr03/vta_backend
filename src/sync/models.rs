@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::hash::{Hash, Hasher};
+use sqlx::Row;
 
 use super::InvalidPermissionError;
 use crate::prelude::*;
@@ -98,8 +99,6 @@ pub struct ListChangedEntrySend {
     pub changed: Timestamp,
     pub created: Timestamp,
 }
-
-use sqlx::Row;
 
 impl sqlx::FromRow<'_, sqlx::mysql::MySqlRow> for ListChangedEntrySend {
     fn from_row(row: &sqlx::mysql::MySqlRow) -> sqlx::Result<Self> {
@@ -208,6 +207,7 @@ pub struct EntryChangedRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(Clone))]
 pub struct EntryChangedEntry {
     pub list: Uuid,
     pub uuid: Uuid,
@@ -250,14 +250,15 @@ impl EntryChangedEntryBlank {
 }
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+#[cfg_attr(test, derive(Clone, PartialEq))]
 pub struct Meaning {
     pub value: String,
     pub is_a: bool,
 }
 
-/// Hack for missing FromRow for Uuid type
-/// otherwise we'd need query_as<(Uuid,)>
-#[derive(Debug, sqlx::FromRow, Eq,PartialEq,Hash)]
-pub struct FetchUuid {
-    pub uuid: Uuid
+#[derive(Debug, Serialize)]
+pub struct EntryChangedResponse {
+    pub delta: HashMap<Uuid,EntryChangedEntry>,
+    pub ignored: Vec<Uuid>,
+    pub invalid: Vec<Uuid>,
 }

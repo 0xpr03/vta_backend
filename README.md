@@ -29,10 +29,14 @@ Copy `config/default.toml` to `config/config.toml` and edit it.
 
 The following environment variables have to be set up for vscode:
 - mariadb database
-- DATABASE_URL for using the ORM checker
 
 Example in windows terminal:
 ```powershell
 $env:DATABASE_URL="mysql://root@localhost/vta_sync"
 & "C:\Users\<User>\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Visual Studio Code\Visual Studio Code.lnk"
 ```
+
+## Debugging tests
+
+Set the rust log via `$Env:RUST_LOG='vta_sync_backend=trace'` or `RUST_LOG=vta_sync_backend=trace` and then run the specific test.
+trace-logging in tests can be enabled using `#[test_log::test(actix_rt::test)]` instead of `#[actix_rt::test]` or `tokio::test`.

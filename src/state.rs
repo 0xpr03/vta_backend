@@ -1,13 +1,23 @@
 use std::fmt;
 
+use crate::prelude::*;
+use serde::{Serialize, Deserialize};
 use sqlx::MySqlPool;
 use uuid::Uuid;
+
+/// Login cookie data
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LoginCookie {
+    pub id: Uuid,
+    pub valid_till: Timestamp,
+    pub key_login: bool,
+}
 
 pub struct State {
     // pub config: Config,
     pub sql: MySqlPool,
     // pub kv: KvPool,
-    pub id: Uuid,
+    pub id: Uuid
 }
 
 // required for actix-tracing

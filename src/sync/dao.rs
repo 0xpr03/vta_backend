@@ -5,7 +5,7 @@ use chrono::Utc;
 use futures::TryStreamExt;
 use rand::Rng;
 use rand::distributions::Alphanumeric;
-use sqlx::{Executor, MySqlConnection, Connection};
+use sqlx::{Executor, MySqlConnection, Connection, Transaction, MySql};
 
 use crate::prelude::*;
 use super::*;
@@ -319,7 +319,7 @@ pub async fn update_deleted_entries(sql: &mut MySqlConnection, mut data: EntryDe
                             .await.context("fetching shared write perms")?;
                     let has_perms = res == Some(true);
                     // cache
-                    list_perm.insert(e.list.clone(),res == Some(true));
+                    list_perm.insert(e.list.clone(),has_perms);
                     if !has_perms {
                         invalid.push(e.entry);
                         continue;
@@ -355,20 +355,26 @@ pub async fn update_deleted_entries(sql: &mut MySqlConnection, mut data: EntryDe
 }
 
 //#[instrument(skip(state,data))]
-pub async fn update_changed_entries(sql: &mut MySqlConnection, mut data: EntryChangedRequest, user: &Uuid) -> Result<Vec<EntryChangedEntry>> {
+pub async fn update_changed_entries(sql: &mut MySqlConnection, data: EntryChangedRequest, user: &UserId) -> Result<EntryChangedResponse> {
+    let mut transaction = sql.begin().await?;
+    let res = _update_changed_entries(&mut transaction, data, user).await;
+    if res.is_ok() {
+        transaction.commit().await?;
+    } else {
+        transaction.rollback().await?;
+    }
+    res
+}
+
+async fn _update_changed_entries(transaction: &mut Transaction<'_, MySql>, data: EntryChangedRequest, user: &UserId) -> Result<EntryChangedResponse> {
     let t_now = Utc::now().naive_utc();
     
-    let mut transaction = sql.begin().await?;
-    
-    // let last_synced: Option<Timestamp> = sqlx::query!("SELECT date FROM last_synced WHERE `type` = ? AND user_id = ? AND client = ? FOR UPDATE",
-    //     LastSyncedKind::EntriesChanged as i32, user, &data.client)
-    //     .fetch_optional(&mut transaction).await.context("selecting last_synced")?.map(|v|v.date);
-    let last_synced = last_synced(&mut transaction,user,&data.client,LastSyncedKind::EntriesChanged).await?;
+    let last_synced = last_synced(&mut *transaction,&user.0,&data.client,LastSyncedKind::EntriesChanged).await?;
 
     // fetch data to return
     // don't request meanings already, we can do that after checking for newer data in the payload
     let time_addition = if last_synced.is_some() {
-        "AND e.changed > ?"
+        "AND e.updated >= ?"
     } else {
         ""
     };
@@ -382,137 +388,134 @@ pub async fn update_changed_entries(sql: &mut MySqlConnection, mut data: EntryCh
     let q = sqlx::query_as::<_,EntryChangedEntryBlank>(sql_t.as_str());
     let stream = match last_synced {
         Some(time) => {
-            q.bind(user).bind(time).bind(user).bind(time)
+            q.bind(user.0).bind(time).bind(user.0).bind(time)
         },
         None => {
-            q.bind(user).bind(user)
+            q.bind(user.0).bind(user.0)
         }
-    }.fetch(&mut transaction);
-    let _raw_return_entries: Vec<EntryChangedEntryBlank> = stream.try_collect().await.context("requesting changes")?;
-    let mut raw_return_entries: HashMap<Uuid, EntryChangedEntryBlank> = _raw_return_entries.into_iter().map(|v|(v.uuid,v)).collect();
-    trace!(amount=raw_return_entries.len(),"retrieved changes to send back");
+    }.fetch(&mut *transaction);
+    // don't fetch meanings here, postponed after handling incoming changes
+    let mut delta_entries_raw: HashMap<Uuid,EntryChangedEntryBlank> = stream.map_ok(|v|(v.uuid,v)).try_collect().await.context("requesting changes")?;
+    trace!(amount=delta_entries_raw.len(),"retrieved changes to send back");
 
-    let mut rng = rand::thread_rng();
-    let table_name: String = format!("t_{}",repeat(())
-        .map(|()| rng.sample(Alphanumeric))
-        .map(char::from)
-        .take(7)
-        .collect::<String>());
-    transaction.execute(format!("CREATE TEMPORARY TABLE {} (
-        list BINARY(16) NOT NULL,
-        uuid BINARY(16) NOT NULL,
-        changed DATETIME NOT NULL,
-        tip VARCHAR(127),
-        PRIMARY KEY (list,uuid),
-        INDEX (list),
-        INDEX (uuid),
-        INDEX (changed),
-        INDEX (uuid,changed)
-    )",table_name).as_str()).await.context("ceating temp table")?;
-    trace!("created temp table");
+    let mut list_perm: HashMap<Uuid,bool> = HashMap::new();
+    let mut list_not_existing: HashSet<Uuid> = HashSet::new();
+    let mut ignored = Vec::new();
+    let mut invalid = Vec::new();
 
-    // insert received entries into temp table
-    let sql_t = format!("INSERT INTO `{tbl}` (list,uuid,changed,tip) VALUES(?,?,?,?)
-        ON DUPLICATE KEY UPDATE changed=VALUES(changed), tip=VALUES(tip)",tbl= table_name);
-    for v in data.entries.iter_mut() {
-        if v.changed > t_now {
-            info!(%v.changed,%t_now,"ignoring change date in future");
+    let sqlt_owner = "SELECT owner FROM lists WHERE uuid = ?";
+    let sqlt_perms_shared = "SELECT `write` FROM list_permissions WHERE list = ? AND user = ?";
+    let sqlt_update_entry = "UPDATE entries SET tip = ?, changed = ?, updated = ? WHERE uuid = ?";
+    let sqlt_entry_deleted = "SELECT 1 FROM deleted_entry WHERE entry = ?";
+    let sqlt_entry_changed_date = "SELECT changed FROM entries WHERE uuid = ? FOR UPDATE";
+    let sqlt_insert_entry = "INSERT INTO entries (list,uuid,changed,updated,tip) VALUES (?,?,?,?,?)";
+    let sqlt_delete_meanings = "DELETE FROM entry_meaning WHERE entry = ?";
+    let sqlt_insert_meaning = "INSERT INTO entry_meaning (entry,`value`,is_a) VALUES (?,?,?)";
+
+    for e in data.entries.into_iter() {
+        if e.changed > t_now {
+            info!(%e.changed,%t_now,"ignoring change date in future");
             //v.changed = t_now;
-            // TODO: track failures for sendback
+            invalid.push(e.uuid);
             continue;
         }
-        
-        // verify we don't send back outdated stuff
-        if let Some(ret_v) = raw_return_entries.get(&v.uuid) {
-            if ret_v.changed > v.changed {
-                raw_return_entries.remove(&v.uuid);
+
+        if let Some(return_entry) = delta_entries_raw.get(&e.uuid) {
+            if return_entry.changed > e.changed {
+                // ignore outdated incoming changes
+                continue;
+            } else {
+                // don't send back data with newer incoming changes
+                delta_entries_raw.remove(&e.uuid);
             }
         }
-        sqlx::query(sql_t.as_str())
-            .bind(v.list)
-            .bind(v.uuid)
-            .bind(v.changed)
-            .bind(&v.tip)
-            .execute(&mut transaction).await.context("inserting data to temp table")?;
-    }
-    // remove all non-existing/non-owner lists from temp table
-    let sqlt_del_nonowned = format!("DELETE FROM `{tbl}` WHERE list NOT IN (
-        SELECT l.uuid FROM lists l
-        WHERE `{tbl}`.list = l.uuid AND l.owner = ?
-        UNION
-        SELECT p.list FROM list_permissions p
-        WHERE p.list = `{tbl}`.list AND p.`write` = true AND p.user = ?)", tbl = table_name);
-    let sql_res = sqlx::query(sqlt_del_nonowned.as_str())
-        .bind(user)
-        .bind(user)
-        .execute(&mut transaction).await.context("removing entries without list permissions")?;
-    trace!(affected=sql_res.rows_affected(),"removed entries without permission / existing list");
 
-    // remove outdated
-    let query_outdated = format!("DELETE FROM `{tbl}` WHERE uuid IN
-        (SELECT uuid FROM entries e WHERE e.`uuid` = `{tbl}`.`uuid` AND e.`changed` >= `{tbl}`.`changed` FOR UPDATE);",tbl = table_name);
-    let res = sqlx::query(query_outdated.as_str()).execute(&mut transaction).await.context("removing outdated")?;
-    trace!(affected=res.rows_affected(),"removed outdated data");
-
-    // insert entries back
-    let query_upsert = format!("INSERT INTO entries (list,uuid,changed,tip)
-        SELECT list,uuid,changed,tip FROM `{tbl}`
-        ON DUPLICATE KEY UPDATE changed=VALUES(changed), tip=VALUES(tip)",tbl=table_name);
-    let res = sqlx::query(query_upsert.as_str()).execute(&mut transaction).await.context("upserting entries")?;
-    trace!(affected=res.rows_affected(),"inserted into entries");
-    // TODO: insert meanings
-    // retrieve entries for which we need to update their meanings
-    let q_fetch = format!("SELECT uuid FROM `{tbl}`",tbl = table_name);
-    let to_update: Vec<FetchUuid> = sqlx::query_as::<_,FetchUuid>(q_fetch.as_str())
-        .fetch(&mut transaction).try_collect().await.context("fetching entries to meaning update")?;
-    let to_update: HashSet<Uuid> = to_update.into_iter().map(|v|v.uuid).collect();
-    trace!(amount=to_update.len(),"retrieved entries to update meanings");
-    
-    // remove all meanings for entries
-    // let query_delete_meanings = format!("DELETE FROM entry_meaning WHERE entry IN (SELECT uuid FROM `{tbl}`)",tbl=table_name);
-    // let res = sqlx::query(query_delete_meanings.as_str()).execute(&mut transaction).await.context("deleting meanings")?;
-    // trace!(affected=res.rows_affected(),"deleted old meanings");
-    let mut affected = 0;
-    for e in data.entries.iter() {
-        let res = sqlx::query("DELETE FROM entry_meaning WHERE entry = ?")
+        //check permissions
+        match list_perm.get(&e.list) {
+            Some(true) => (),
+            Some(false) => {
+                invalid.push(e.list);
+                continue;
+            }
+            None => {
+                let res: Option<Uuid> = sqlx::query_scalar(sqlt_owner)
+                    .bind(e.list).fetch_one(&mut *transaction).await.context("fetching list owner")?;
+                if let Some(owner) = res {
+                    if owner == user.0 {
+                        list_perm.insert(e.list,true);
+                    } else {
+                        // not owner, check for write perm
+                        let res: Option<bool> = sqlx::query_scalar(sqlt_perms_shared)
+                        .bind(e.list).bind(user.0).fetch_optional(&mut *transaction)
+                            .await.context("fetching shared write perms")?;
+                        let has_perms = res == Some(true);
+                        // cache
+                        list_perm.insert(e.list.clone(),has_perms);
+                        if !has_perms {
+                            invalid.push(e.uuid);
+                            continue;
+                        }
+                    }
+                } else {
+                    list_not_existing.insert(e.list);
+                    ignored.push(e.uuid);
+                    continue;
+                }
+            }
+        }
+        // check entry isn't deleted
+        let res: Option<i32> = sqlx::query_scalar(sqlt_entry_deleted)
+            .bind(e.uuid).fetch_optional(&mut *transaction).await.context("checking for entry tombstone")?;
+        if res.is_some() {
+            trace!(%e.uuid,"ignoring deleted entry");
+            ignored.push(e.uuid);
+            continue;
+        }
+        // fetch last changed
+        let res: Option<Timestamp> = sqlx::query_scalar(sqlt_entry_changed_date)
+            .bind(e.uuid).fetch_optional(&mut *transaction).await.context("fetching changed date")?;
+        if let Some(changed) = res {
+            // do not take over outdated entries
+            if changed >= e.changed {
+                trace!(%e.uuid,%changed,%e.changed,"ignoring outdated entry");
+                ignored.push(e.uuid);
+                continue;
+            }
+            sqlx::query(sqlt_update_entry)
+            .bind(e.tip).bind(e.changed).bind(t_now).bind(e.uuid)
+            .execute(&mut *transaction).await.context("updating entry")?;
+        } else {
+            // or insert new entry
+            sqlx::query(sqlt_insert_entry)
+                .bind(e.list).bind(e.uuid).bind(e.changed).bind(t_now).bind(e.tip)
+                .execute(&mut *transaction).await.context("inserting entry")?;
+        }
+        // now update meanings
+        sqlx::query(sqlt_delete_meanings)
             .bind(e.uuid)
-            .execute(&mut transaction).await.context("deleting old meanings")?;
-        affected += res.rows_affected();
-    }
-    trace!(affected=affected,"deleted old meanings");
-
-
-    // now insert the new meanings
-    let mut meanings_ins = 0;
-    for e in data.entries.into_iter() {
-        if to_update.contains(&e.uuid) {
-            for m in e.meanings.into_iter() {
-                let res = sqlx::query("INSERT INTO entry_meaning (entry,value,is_a) VALUES(?,?,?)")
-                .bind(e.uuid)
-                .bind(m.value)
-                .bind(m.is_a)
-                .execute(&mut transaction).await.context("inserting meanings")?;
-                meanings_ins += res.rows_affected();
-            }
+            .execute(&mut *transaction).await.context("deleting entry meaings")?;
+        for m in e.meanings.into_iter() {
+            sqlx::query(sqlt_insert_meaning)
+                .bind(e.uuid).bind(m.value).bind(m.is_a)
+                .execute(&mut *transaction).await.context("inserting meaning")?;
         }
     }
-    trace!(affected=meanings_ins,"inserted meanings");
 
-    // now fetch the meanings
-    let mut return_entries = Vec::with_capacity(raw_return_entries.len());
-    for (_,e) in raw_return_entries.into_iter() {
+    // now fetch the meanings of returned delta
+    let mut return_entries = HashMap::with_capacity(delta_entries_raw.len());
+    for (id,e) in delta_entries_raw.into_iter() {
         let meanings: Vec<Meaning> = sqlx::query_as::<_,Meaning>("SELECT value,is_a FROM entry_meaning WHERE entry = ?")
-            .bind(e.uuid).fetch(&mut transaction).try_collect().await.context("fetching meanings")?;
-        return_entries.push(e.into_full(meanings));
+            .bind(e.uuid).fetch(&mut *transaction).try_collect().await.context("fetching meanings")?;
+        return_entries.insert(id,e.into_full(meanings));
     }
 
-    update_last_synced(&mut transaction,user,&data.client,LastSyncedKind::EntriesChanged,t_now).await?;
+    update_last_synced(&mut *transaction,&user.0,&data.client,LastSyncedKind::EntriesChanged,t_now).await?;
 
-    transaction.execute(format!("DROP TABLE {}",table_name).as_str()).await.context("dropping temp table")?;
-
-    transaction.commit().await?;
-
-    Ok(return_entries)
+    Ok(EntryChangedResponse {
+        delta: return_entries,
+        ignored,
+        invalid,
+    })
 }
 
 async fn last_synced(sql: &mut MySqlConnection, user: &Uuid, client: &Uuid, kind: LastSyncedKind) -> Result<Option<Timestamp>> {

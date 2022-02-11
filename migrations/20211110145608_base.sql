@@ -156,9 +156,10 @@ CREATE TABLE IF NOT EXISTS entries
     list BINARY(16) NOT NULL,
     uuid BINARY(16) NOT NULL PRIMARY KEY,
     changed DATETIME NOT NULL,
+    updated DATETIME NOT NULL,
     tip VARCHAR(127),
-    INDEX `l_changed` (`list`,`changed`),
-    INDEX (`uuid`,`changed`),
+    INDEX `l_updated` (`list`,`updated`),
+    INDEX (`uuid`,`updated`),
     INDEX (list),
     CONSTRAINT `fk_list_id_entry`
         FOREIGN KEY (list) REFERENCES lists (uuid)

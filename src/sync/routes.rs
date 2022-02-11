@@ -49,7 +49,7 @@ async fn entry_sync_del(reg: web::Json<EntryDeletedRequest>, id: Identity, state
 async fn entry_sync_changed(reg: web::Json<EntryChangedRequest>, id: Identity, state: AppState) -> Result<HttpResponse> {
     let identity = id.identity();
     trace!(?identity,"entry sync changed request");
-    let user = Uuid::parse_str(&identity.ok_or(ListError::NotAuthenticated)?)?;
+    let user = UserId(Uuid::parse_str(&identity.ok_or(ListError::NotAuthenticated)?)?);
     let data = reg.into_inner();
 
     //let mut connection = state.sql.acquire().await?

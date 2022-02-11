@@ -56,3 +56,8 @@ features = ["serde", "std"]
 [dependencies.config]
 version = "0.11"
 features = [ "toml","ini"]
+
+[dev-dependencies]
+# logging in tests
+test-log = "0.2"
+env_logger = "*"
