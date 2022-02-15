@@ -27,6 +27,30 @@ pub struct UserPermissions {
     pub reshare: bool,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct NewTokenData {
+    pub write: bool,
+    pub reshare: bool,
+    pub reusable: bool,
+    pub deadline: Timestamp,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ShareTokenReturn {
+    pub token_a: String,
+    pub token_b: String,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+pub struct ShareTokenEntry {
+    pub list: Uuid,
+    pub deadline: Timestamp,
+    pub hash: Vec<u8>,
+    pub write: bool,
+    pub reshare: bool,
+    pub reusable: bool,
+}
+
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct EntryMeaning {
     pub value: String,

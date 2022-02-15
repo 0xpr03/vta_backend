@@ -17,9 +17,10 @@ fn timestamp(ts: &str) -> Timestamp {
 
 /// Insert entries, test only
 async fn insert_entries(sql: &mut DbConn, entries: &[EntryChangedEntry]) {
+    let t_now = Utc::now().naive_utc();
     for e in entries {
-        sqlx::query("INSERT INTO entries (list,uuid,changed,tip) VALUES (?,?,?,?)")
-            .bind(e.list).bind(e.uuid).bind(e.changed).bind(&e.tip)
+        sqlx::query("INSERT INTO entries (list,uuid,changed,updated,tip) VALUES (?,?,?,?,?)")
+            .bind(e.list).bind(e.uuid).bind(e.changed).bind(t_now).bind(&e.tip)
             .execute(&mut *sql)
             .await.unwrap();
 

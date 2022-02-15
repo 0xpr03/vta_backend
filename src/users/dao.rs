@@ -126,17 +126,3 @@ async fn key_type_by_name(sql: &mut MySqlConnection, ktype: &KeyType) -> Result<
         }
     })
 }
-
-/// Check query result for duplicate-entry error. Returns true if found.
-fn check_duplicate(res: std::result::Result<sqlx::mysql::MySqlQueryResult, sqlx::Error>) -> Result<bool> {
-    if let Err(e) = res {
-        if let sqlx::Error::Database(ref e) = e {
-            if e.code() == Some(std::borrow::Cow::Borrowed("23000")) {
-                return Ok(true);
-            }
-        }
-        return Err(e.into());
-    } else {
-        return Ok(false)
-    }
-}

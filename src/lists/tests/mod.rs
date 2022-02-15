@@ -7,6 +7,7 @@ use super::models::*;
 use super::*;
 
 mod list_basics;
+mod sharing;
 
 fn gen_list(rng: &mut ThreadRng) -> ListChange {
     ListChange {
