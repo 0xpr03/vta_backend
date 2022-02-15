@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use base64ct::Base64Url;
 use chrono::Utc;
+use color_eyre::eyre::eyre;
 use futures::TryStreamExt;
 use rand_core::RngCore;
 use sha2::Sha256;
@@ -190,7 +191,7 @@ async fn _use_share_code(sql: &mut Transaction<'_, MySql>, user: &UserId, token_
     }
 }
 
-pub async fn change_list(sql: &mut MySqlConnection, user: UserId, list: ListId, data: ListChange) -> Result<()> {
+pub async fn change_list(sql: &mut MySqlConnection, user: &UserId, list: ListId, data: ListChange) -> Result<()> {
     let t_now = Utc::now().naive_utc();
     // TODO: what happens if this change is behind the last-change date in the DB for this list?
     let mut transaction = sql.begin().await?;
@@ -223,68 +224,100 @@ pub async fn create_list(sql: &mut MySqlConnection, user: &UserId, data: ListCre
     Ok(ListId(list))
 }
 
-pub async fn delete_list(sql: &mut MySqlConnection, user: UserId, list: ListId) -> Result<()> {
+pub async fn delete_list(sql: &mut MySqlConnection, user: &UserId, list: ListId) -> Result<()> {
     let mut transaction = sql.begin().await?;
-    if !has_list_perm(&mut transaction, &user,&list,Permission::OWNER).await? {
+    let res = _delete_list(&mut transaction,user,list).await;
+    if res.is_ok() {
+        transaction.commit().await?;
+    } else {
+        transaction.rollback().await?;
+    }
+    res
+}
+
+async fn _delete_list(transaction: &mut Transaction<'_, MySql>, user: &UserId, list: ListId) -> Result<()> {
+    if !has_list_perm(&mut *transaction, &user,&list,Permission::OWNER).await? {
         return Err(ListError::ListPermission);
     }
 
     let t_now = Utc::now().naive_utc();
 
-    let sql_tombstone = "INSERT INTO lists_deleted (user,list,`time`) VALUES (?,?,?)";
+    let sql_tombstone = "INSERT INTO deleted_list (user,list,`time`) VALUES (?,?,?)";
     sqlx::query(sql_tombstone).bind(user.0).bind(list.0).bind(t_now)
-        .execute(&mut transaction)
+        .execute(&mut *transaction)
         .await.context("inserting list tombstone")?;
     let sql_del_list = "DELETE FROM lists WHERE uuid = ?";
-    let res = sqlx::query(sql_del_list).bind(user.0)
-        .execute(&mut transaction).await.context("deleting list")?;
+    let res = sqlx::query(sql_del_list).bind(list.0)
+        .execute(&mut *transaction).await.context("deleting list")?;
     trace!(list=%list,affected=res.rows_affected(),"deleted list");
-
-    transaction.commit().await?;
-    
+    if res.rows_affected() < 1 {
+        return Err(ListError::Other(eyre!("Expected > 0 affected rows on list delete, got {}",res.rows_affected())));
+    }
     Ok(())
 }
 
 // #[instrument(skip(state,data))]
-pub async fn entries(sql: &mut MySqlConnection, user: UserId, list: ListId) -> Result<List> {
+pub async fn entries(sql: &mut MySqlConnection, user: &UserId, list: ListId) -> Result<HashMap<Uuid,Entry>> {
     if !has_list_perm(&mut *sql, &user,&list,Permission::READ).await? {
         return Err(ListError::ListPermission);
     }
     let sql_entry = "SELECT uuid,tip FROM entries e 
     WHERE e.list = ?";
-    Ok(sqlx::query_as::<_,List>(sql_entry)
-        .bind(user.0).bind(user.0).fetch_one(sql).await.context("fetching single list")?)
+    let raw_e: Vec<(Uuid,String)> = sqlx::query_as::<_,(Uuid,String)>(sql_entry)
+        .bind(list.0).fetch(&mut *sql).try_collect().await.context("fetching entries")?;
+
+    let sql_meanings = "SELECT value,is_a FROM entry_meaning WHERE entry = ?";
+    let mut entries = HashMap::with_capacity(raw_e.len());
+    for (uuid,tip) in raw_e {
+        let meanings = sqlx::query_as::<_,EntryMeaning>(sql_meanings)
+        .bind(&uuid).fetch(&mut *sql).try_collect().await.context("fetching meanings")?;
+        entries.insert(uuid.clone(),Entry {
+            tip,
+            uuid,
+            meanings,
+        });
+    }
+
+    Ok(entries)
 }
 
-pub async fn change_entry(sql: &mut MySqlConnection, user: UserId, entry: EntryId, data: EntryChange) -> Result<()> {
-    let t_now = Utc::now().naive_utc();
+pub async fn change_entry(sql: &mut MySqlConnection, user: &UserId, entry: EntryId, data: EntryChange) -> Result<()> {
     let mut transaction = sql.begin().await?;
-    let list = list_of_entry(&mut transaction, &entry).await?;
-    if !has_list_perm(&mut transaction,&user,&list,Permission::WRITE).await? {
+
+    let res = _change_entry(&mut transaction,user,entry,data).await;
+    if res.is_ok() {
+        transaction.commit().await?;
+    } else {
+        transaction.rollback().await?;
+    }    
+    res
+}
+
+async fn _change_entry(transaction: &mut Transaction<'_, MySql>, user: &UserId, entry: EntryId, data: EntryChange) -> Result<()> {
+    let t_now = Utc::now().naive_utc();
+    let list = list_of_entry(&mut *transaction, &entry).await?;
+    if !has_list_perm(&mut *transaction,&user,&list,Permission::WRITE).await? {
         return Err(ListError::ListPermission);
     }
 
-    let sql_change = "UPDATE entry SET tip = ?, `changed` = ? WHERE uuid = ?";
+    let sql_change = "UPDATE entries SET tip = ?, `changed` = ? WHERE uuid = ?";
     let res = sqlx::query(sql_change)
         .bind(data.tip).bind(t_now).bind(entry.0)
-        .execute(&mut transaction).await.context("updating entry")?;
+        .execute(&mut *transaction).await.context("updating entry")?;
     trace!(list=%list,affected=res.rows_affected(),"updated entry");
 
     let sql_del_meaning = "DELETE FROM entry_meaning WHERE entry = ?";
     let res = sqlx::query(sql_del_meaning)
         .bind(entry.0)
-        .execute(&mut transaction).await.context("deleting meanings")?;
+        .execute(&mut *transaction).await.context("deleting meanings")?;
     trace!(list=%list,affected=res.rows_affected(),"deleted meanings");
 
     let sql_meaning = "INSERT INTO entry_meaning (entry,value,is_a) VALUES(?,?,?)";
     for m in data.meanings {
         sqlx::query(sql_meaning)
         .bind(entry.0).bind(m.value).bind(m.is_a)
-        .execute(&mut transaction).await.context("inserting meanings")?;
+        .execute(&mut *transaction).await.context("inserting meanings")?;
     }
-
-    transaction.commit().await?;
-    
     Ok(())
 }
 
@@ -297,9 +330,9 @@ pub async fn create_entry(sql: &mut MySqlConnection, user: UserId, list: ListId,
 
     let entry = Uuid::new_v4();
 
-    let sql_change = "INSERT INTO entry (list,uuid,`changed`,tip) VALUES(?,?,?)";
+    let sql_change = "INSERT INTO entries (list,uuid,`changed`,updated,tip) VALUES(?,?,?,?,?)";
     let res = sqlx::query(sql_change)
-        .bind(list.0).bind(entry).bind(t_now).bind(data.tip)
+        .bind(list.0).bind(entry).bind(t_now).bind(t_now).bind(data.tip)
         .execute(&mut transaction).await.context("inserting entry")?;
     trace!(list=%list,affected=res.rows_affected(),"inserting entry");
 
@@ -315,25 +348,34 @@ pub async fn create_entry(sql: &mut MySqlConnection, user: UserId, list: ListId,
     Ok(EntryId(entry))
 }
 
-pub async fn delete_entry(sql: &mut MySqlConnection, user: UserId, entry: EntryId) -> Result<()> {
-    let t_now = Utc::now().naive_utc();
+pub async fn delete_entry(sql: &mut MySqlConnection, user: &UserId, entry: EntryId) -> Result<()> {
+    
     let mut transaction = sql.begin().await?;
-    let list = list_of_entry(&mut transaction, &entry).await?;
-    if !has_list_perm(&mut transaction,&user,&list,Permission::WRITE).await? {
+    let res = _delete_entry(&mut transaction,user,entry).await;
+    if res.is_ok() {
+        transaction.commit().await?;
+    } else {
+        transaction.rollback().await?;
+    }
+    res
+}
+
+async fn _delete_entry(transaction: &mut Transaction<'_, MySql>, user: &UserId, entry: EntryId) -> Result<()> {
+    let t_now = Utc::now().naive_utc();
+    let list = list_of_entry(&mut *transaction, &entry).await?;
+    if !has_list_perm(&mut *transaction,&user,&list,Permission::WRITE).await? {
         return Err(ListError::ListPermission);
     }
 
-    let sql_tombstone = "INSERT INTO lists_deleted (user,list,`time`) VALUES (?,?,?)";
-    sqlx::query(sql_tombstone).bind(user.0).bind(list.0).bind(t_now)
-        .execute(&mut transaction)
+    let sql_tombstone = "INSERT INTO deleted_entry (list,`entry`,`time`) VALUES (?,?,?)";
+    sqlx::query(sql_tombstone).bind(list.0).bind(entry.0).bind(t_now)
+        .execute(&mut *transaction)
         .await.context("inserting list tombstone")?;
 
-    let sql_del_entry = "DELETE FROM entry WHERE uuid = ?";
+    let sql_del_entry = "DELETE FROM entries WHERE uuid = ?";
     let res = sqlx::query(sql_del_entry)
-        .bind(entry.0).execute(&mut transaction).await.context("deleting entry")?;
+        .bind(entry.0).execute(&mut *transaction).await.context("deleting entry")?;
     trace!(entry=%entry,affected=res.rows_affected(),"deleted entry");
-    transaction.commit().await?;
-
     Ok(())
 }
 
@@ -344,7 +386,7 @@ pub enum Permission {
 }
 
 async fn list_of_entry(sql: &mut MySqlConnection, entry: &EntryId) -> Result<ListId> {
-    let sql_fetch = "SELECT list FROM entry WHERE id = ?";
+    let sql_fetch = "SELECT list FROM entries WHERE uuid = ?";
     let list = match sqlx::query_as::<_,(Uuid,)>(sql_fetch)
         .bind(entry.0).fetch_optional(&mut *sql)
         .await.context("selecting list of entry")? {
@@ -368,7 +410,7 @@ pub async fn has_list_perm(sql: &mut MySqlConnection, user: &UserId, list: &List
     if perm == Permission::OWNER {
         return Ok(is_owner);
     }
-    if (perm == Permission::WRITE || perm == Permission::RESHARE) && is_owner {
+    if (perm == Permission::READ || perm == Permission::WRITE || perm == Permission::RESHARE) && is_owner {
         return Ok(true);
     }
 

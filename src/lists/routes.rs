@@ -95,7 +95,7 @@ async fn delete_list(id: Identity, state: AppState, path: web::Path<(Uuid,)>) ->
     let user = get_user(id)?;
     let (list,) = path.into_inner();
 
-    let response = dao::delete_list(&mut *state.sql.acquire().await?, user, ListId(list)).await?;
+    let response = dao::delete_list(&mut *state.sql.acquire().await?, &user, ListId(list)).await?;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -105,7 +105,7 @@ async fn change_list(id: Identity, state: AppState, path: web::Path<(Uuid,)>, re
     let (list,) = path.into_inner();
     let data = reg.into_inner();
 
-    let response = dao::change_list(&mut *state.sql.acquire().await?, user, ListId(list), data).await?;
+    let response = dao::change_list(&mut *state.sql.acquire().await?, &user, ListId(list), data).await?;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -123,7 +123,7 @@ async fn list_entries(id: Identity, state: AppState, path: web::Path<(Uuid,)>) -
     let user = get_user(id)?;
     let (list,) = path.into_inner();
 
-    let response = dao::entries(&mut *state.sql.acquire().await?, user, ListId(list)).await?;
+    let response = dao::entries(&mut *state.sql.acquire().await?, &user, ListId(list)).await?;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -134,7 +134,7 @@ async fn delete_entry(id: Identity, state: AppState, path: web::Path<(Uuid,Uuid)
     // but its logical to have this API path
     let (_list,entry) = path.into_inner();
 
-    let response = dao::delete_entry(&mut *state.sql.acquire().await?, user, EntryId(entry)).await?;
+    let response = dao::delete_entry(&mut *state.sql.acquire().await?, &user, EntryId(entry)).await?;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -146,7 +146,7 @@ async fn change_entry(id: Identity, state: AppState, path: web::Path<(Uuid,Uuid)
     let (_list,entry) = path.into_inner();
     let data = data.into_inner();
 
-    let response = dao::change_entry(&mut *state.sql.acquire().await?, user, EntryId(entry), data).await?;
+    let response = dao::change_entry(&mut *state.sql.acquire().await?, &user, EntryId(entry), data).await?;
     Ok(HttpResponse::Ok().json(response))
 }
 

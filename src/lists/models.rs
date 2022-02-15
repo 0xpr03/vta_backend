@@ -52,6 +52,7 @@ pub struct ShareTokenEntry {
 }
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+#[cfg_attr(test, derive(PartialEq,Clone))]
 pub struct EntryMeaning {
     pub value: String,
     pub is_a: bool,
@@ -67,8 +68,16 @@ pub struct ListChange {
 pub type ListCreate = ListChange;
 
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(Clone))]
 pub struct EntryChange {
     pub tip: String,
+    pub meanings: Vec<EntryMeaning>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Entry {
+    pub tip: String,
+    pub uuid: Uuid,
     pub meanings: Vec<EntryMeaning>,
 }
 

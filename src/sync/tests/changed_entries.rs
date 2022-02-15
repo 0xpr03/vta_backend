@@ -53,6 +53,8 @@ async fn test_basic_changed_entries() {
         assert_entry_eq(e_res,e_exp);
     }
 
+    // TODO: assert we're reading 0 back after 1 second delay
+
     // delta test: change one, insert one new
     let new = gen_entry(&list1.uuid,None);
     let changed_date = entries2[0].changed + Duration::seconds(1);

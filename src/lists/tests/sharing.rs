@@ -83,7 +83,7 @@ async fn test_sharecode_invalid_data() {
 
     let res = dao::generate_share_code(&mut conn, &user, &list_id,share_data).await.unwrap();
 
-    for i in 0..1_000_0 {
+    for _ in 0..1_000_0 {
         let mut token_b = [0u8; 16];
         rng.fill_bytes(&mut token_b);
         let _ = dao::use_share_code(&mut conn, &user2, &res.token_a, &base64::encode(token_b.as_slice())).await.unwrap_err();

@@ -30,8 +30,11 @@ pub struct ErrorResponse {
     pub message: &'static str,
 }
 
+#[cfg_attr(test, derive(Clone, PartialEq))]
 pub struct ListId(pub Uuid);
+#[cfg_attr(test, derive(Clone, PartialEq))]
 pub struct EntryId(pub Uuid);
+#[cfg_attr(test, derive(Clone, PartialEq))]
 pub struct UserId(pub Uuid);
 
 impl fmt::Display for ListId {
