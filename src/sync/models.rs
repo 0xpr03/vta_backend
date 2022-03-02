@@ -7,28 +7,6 @@ use std::hash::{Hash, Hasher};
 use super::InvalidPermissionError;
 use crate::prelude::*;
 
-pub enum LastSyncedKind {
-    ListsDeleted = 1,
-    ListsChanged = 2,
-    EntriesDeleted = 3,
-    EntriesChanged = 4,
-}
-
-impl TryFrom<i32> for LastSyncedKind {
-    type Error = ();
-
-    fn try_from(v: i32) -> Result<Self, Self::Error> {
-        use LastSyncedKind::*;
-        match v {
-            x if x == ListsDeleted as i32 => Ok(ListsDeleted),
-            x if x == ListsChanged as i32 => Ok(ListsChanged),
-            x if x == EntriesDeleted as i32 => Ok(EntriesDeleted),
-            x if x == EntriesChanged as i32 => Ok(EntriesChanged),
-            _ => Err(()),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Deserialize)]
 pub struct ListDeletedRequest {
     pub since: Option<Timestamp>,

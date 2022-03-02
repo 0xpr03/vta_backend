@@ -70,19 +70,6 @@ CREATE TABLE IF NOT EXISTS user_key
         ON UPDATE RESTRICT
 );
 
-CREATE TABLE IF NOT EXISTS last_synced
-(
-    user_id BINARY(16) NOT NULL,
-    client BINARY(16) NOT NULL,
-    date DATETIME NOT NULL DEFAULT current_timestamp(),
-    `type` INT NOT NULL,
-    PRIMARY KEY (user_id,`type`,client),
-    CONSTRAINT `fk_user_id_last_synced`
-        FOREIGN KEY (user_id) REFERENCES users (uuid)
-        ON DELETE CASCADE
-        ON UPDATE RESTRICT
-);
-
 CREATE TABLE IF NOT EXISTS lists
 (
     owner BINARY(16) NOT NULL,
