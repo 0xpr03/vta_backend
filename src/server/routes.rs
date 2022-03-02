@@ -1,7 +1,7 @@
-use actix_web::{HttpResponse, get, web};
-use chrono::Utc;
-use crate::server::ServerInfo;
 use crate::prelude::*;
+use crate::server::ServerInfo;
+use actix_web::{get, web, HttpResponse};
+use chrono::Utc;
 
 #[instrument]
 #[get("/api/v1/server/info")]

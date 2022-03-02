@@ -1,7 +1,7 @@
 use std::fmt;
 
-use strum::EnumString;
 use crate::prelude::*;
+use strum::EnumString;
 
 #[derive(Debug, sqlx::FromRow, Serialize)]
 pub struct User {
@@ -22,7 +22,7 @@ pub struct User {
 // }
 
 #[derive(sqlx::FromRow, Serialize)]
-pub struct UserKey{
+pub struct UserKey {
     pub user_id: Uuid,
     pub auth_key: Vec<u8>,
     pub key_type: i32,
@@ -45,10 +45,10 @@ pub struct AccRegister {
 #[allow(non_camel_case_types)]
 pub enum KeyType {
     RSA_PEM,
-    EC_PEM
+    EC_PEM,
 }
 
-#[derive(Debug,sqlx::FromRow)]
+#[derive(Debug, sqlx::FromRow)]
 pub struct KeyTypeRecord {
     pub name: KeyType,
 }
@@ -80,7 +80,7 @@ pub struct AccBindPassword {
 
 #[derive(Deserialize)]
 pub struct LoginClaims {
-    pub iss: Uuid
+    pub iss: Uuid,
 }
 
 #[derive(Deserialize)]
@@ -93,9 +93,9 @@ pub struct PasswordBindRequest {
 impl fmt::Debug for PasswordBindRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PasswordBindRequest")
-         .field("password length ", &self.password.len())
-         .field("email", &self.email)
-         .finish()
+            .field("password length ", &self.password.len())
+            .field("email", &self.email)
+            .finish()
     }
 }
 

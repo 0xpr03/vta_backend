@@ -4,15 +4,17 @@ use chrono::NaiveDateTime;
 
 pub type Timestamp = NaiveDateTime;
 pub type DbConn = sqlx::MySqlConnection;
-pub use tracing::*;
-pub use uuid::Uuid;
-pub use color_eyre::eyre::Context;
-pub use serde::{Deserialize, Serialize};
 pub use crate::state::AppState;
 pub use crate::users::update_last_seen;
+pub use color_eyre::eyre::Context;
+pub use serde::{Deserialize, Serialize};
+pub use tracing::*;
+pub use uuid::Uuid;
 
 /// Check query result for duplicate-entry error. Returns true if found.
-pub fn check_duplicate(res: std::result::Result<sqlx::mysql::MySqlQueryResult, sqlx::Error>) -> std::result::Result<bool,sqlx::Error> {
+pub fn check_duplicate(
+    res: std::result::Result<sqlx::mysql::MySqlQueryResult, sqlx::Error>,
+) -> std::result::Result<bool, sqlx::Error> {
     if let Err(e) = res {
         if let sqlx::Error::Database(ref e) = e {
             if e.code() == Some(std::borrow::Cow::Borrowed("23000")) {
@@ -21,7 +23,7 @@ pub fn check_duplicate(res: std::result::Result<sqlx::mysql::MySqlQueryResult, s
         }
         return Err(e.into());
     } else {
-        return Ok(false)
+        return Ok(false);
     }
 }
 
@@ -76,11 +78,22 @@ impl fmt::Debug for UserId {
 pub mod tests {
     use actix_rt::spawn;
     use chrono::{NaiveDateTime, Utc};
-    use rand::{Rng, distributions::{Alphanumeric, Standard}, prelude::ThreadRng};
-    use sqlx::{mysql::{MySqlConnectOptions, MySqlPoolOptions}, pool::PoolConnection, MySql, Executor};
+    use rand::{
+        distributions::{Alphanumeric, Standard},
+        prelude::ThreadRng,
+        Rng,
+    };
+    use sqlx::{
+        mysql::{MySqlConnectOptions, MySqlPoolOptions},
+        pool::PoolConnection,
+        Executor, MySql,
+    };
     use uuid::Uuid;
 
-    use crate::{Pool, users::user::{RegisterClaims, KeyType}};
+    use crate::{
+        users::user::{KeyType, RegisterClaims},
+        Pool,
+    };
 
     use super::*;
 
@@ -88,22 +101,22 @@ pub mod tests {
         pub db: Pool,
         pub db_name: String,
     }
-    
+
     impl DatabaseGuard {
         pub async fn new() -> Self {
             // ignore on purpose, can only be installed once
             // let _ = color_eyre::install();
             let mut rng = rand::thread_rng();
-            let db_name: String = format!("testing_temp_{}",random_string(&mut rng,7));
-            println!("Temp DB: {}",db_name);
-            
+            let db_name: String = format!("testing_temp_{}", random_string(&mut rng, 7));
+            println!("Temp DB: {}", db_name);
+
             let options = MySqlConnectOptions::new()
-            .host("127.0.0.1")
-            .port(3306)
-            .username("root");
+                .host("127.0.0.1")
+                .port(3306)
+                .username("root");
 
             let conn_uri = std::env::var("DATABASE_URL").ok();
-    
+
             {
                 let opts = MySqlPoolOptions::new().after_connect(|conn| Box::pin(async move {
                     conn.execute("SET SESSION sql_mode=STRICT_ALL_TABLES; SET SESSION innodb_strict_mode=ON;").await.unwrap();
@@ -114,13 +127,16 @@ pub mod tests {
                     None => opts.connect_with(options.clone()).await.unwrap(),
                 };
                 let conn = &mut *db_pool.acquire().await.unwrap();
-                sqlx::query(format!("CREATE DATABASE {}",db_name).as_str()).execute(conn).await.unwrap();
+                sqlx::query(format!("CREATE DATABASE {}", db_name).as_str())
+                    .execute(conn)
+                    .await
+                    .unwrap();
             }
-    
+
             let options = options.database(&db_name);
             // hack to avoid problems with URI/ENV connections that already select a database
             // which prevents us from doing so via MySqlConnectOptions
-            let conn_db_switch = format!("use `{}`",db_name);
+            let conn_db_switch = format!("use `{}`", db_name);
             let opts = MySqlPoolOptions::new().after_connect(move|conn| {
                 let c = conn_db_switch.clone();
                 Box::pin(async move {
@@ -135,41 +151,51 @@ pub mod tests {
 
             let conn = &mut *db_pool.begin().await.unwrap();
 
-            let res = sqlx::query_as::<_,(String,)>("SELECT DATABASE() FROM DUAL").fetch_optional(&mut *conn).await.unwrap();
-            println!("Selected Database: {:?}",res);
-    
+            let res = sqlx::query_as::<_, (String,)>("SELECT DATABASE() FROM DUAL")
+                .fetch_optional(&mut *conn)
+                .await
+                .unwrap();
+            println!("Selected Database: {:?}", res);
+
             sqlx::migrate!()
-            .run(&mut *db_pool.begin().await.unwrap()).await.unwrap();
-    
+                .run(&mut *db_pool.begin().await.unwrap())
+                .await
+                .unwrap();
+
             Self {
                 db: db_pool,
                 db_name,
             }
         }
-    
+
         pub async fn conn(&self) -> PoolConnection<MySql> {
             self.db.acquire().await.unwrap()
         }
-        
+
         /// Has to be called manually, hack due to problem with async in drop code
         pub async fn drop_async(self) {
-            sqlx::query(format!("DROP DATABASE IF EXISTS `{}`",self.db_name).as_str())
-                .execute(&mut *self.db.acquire().await.unwrap()).await.unwrap();
+            sqlx::query(format!("DROP DATABASE IF EXISTS `{}`", self.db_name).as_str())
+                .execute(&mut *self.db.acquire().await.unwrap())
+                .await
+                .unwrap();
         }
     }
-    
+
     impl Drop for DatabaseGuard {
         fn drop(&mut self) {
             // TODO: fixme, doesn't actually work, blocking will result in a deadlock
             let db = self.db.clone();
             let name = self.db_name.clone();
             spawn(async move {
-                sqlx::query(format!("DROP DATABASE IF EXISTS `{}`",name).as_str()).execute(&mut *db.begin().await.unwrap()).await.unwrap();
+                sqlx::query(format!("DROP DATABASE IF EXISTS `{}`", name).as_str())
+                    .execute(&mut *db.begin().await.unwrap())
+                    .await
+                    .unwrap();
                 println!("Dropped");
             });
         }
     }
-    
+
     #[actix_rt::test]
     async fn test_setup() {
         let db = DatabaseGuard::new().await;
@@ -177,42 +203,49 @@ pub mod tests {
     }
 
     /// Generates user claims,key,key_type for register_user
-    pub fn gen_user() -> (RegisterClaims,Vec<u8>,KeyType) {
+    pub fn gen_user() -> (RegisterClaims, Vec<u8>, KeyType) {
         let mut rng = rand::thread_rng();
         let claims = RegisterClaims {
             iss: Uuid::new_v4(),
-            name: random_string(&mut rng,7),
+            name: random_string(&mut rng, 7),
             delete_after: Some(3600),
         };
         let key: Vec<u8> = rng.sample_iter(Standard).take(16).collect();
         let key_type = KeyType::EC_PEM;
-        (claims,key,key_type)
+        (claims, key, key_type)
     }
 
-    pub fn random_string(rng: &mut ThreadRng,length: usize) -> String {
+    pub fn random_string(rng: &mut ThreadRng, length: usize) -> String {
         rng.sample_iter(Alphanumeric)
-        .take(length)
-        .map(char::from)
-        .collect()
+            .take(length)
+            .map(char::from)
+            .collect()
     }
 
-    pub fn random_naive_date(rng: &mut ThreadRng,past: bool) -> NaiveDateTime {
-        NaiveDateTime::from_timestamp(if past {
-            rng.gen_range(0..Utc::now().naive_utc().timestamp())
-        } else {
-            rng.gen()
-        },0)
+    pub fn random_naive_date(rng: &mut ThreadRng, past: bool) -> NaiveDateTime {
+        NaiveDateTime::from_timestamp(
+            if past {
+                rng.gen_range(0..Utc::now().naive_utc().timestamp())
+            } else {
+                rng.gen()
+            },
+            0,
+        )
     }
 
     pub fn random_future_date(rng: &mut ThreadRng) -> NaiveDateTime {
         NaiveDateTime::from_timestamp(
-            rng.gen_range(Utc::now().naive_utc().timestamp()..i32::MAX as i64),0)
+            rng.gen_range(Utc::now().naive_utc().timestamp()..i32::MAX as i64),
+            0,
+        )
     }
 
     /// Generate user and register
     pub async fn register_test_user(conn: &mut DbConn, rng: &mut ThreadRng) -> UserId {
-        let(claims,key,key_type) = gen_user();
-        let id = crate::users::dao::register_user(conn,&claims,&key,key_type.clone()).await.unwrap();
+        let (claims, key, key_type) = gen_user();
+        let id = crate::users::dao::register_user(conn, &claims, &key, key_type.clone())
+            .await
+            .unwrap();
         UserId(id)
     }
 }

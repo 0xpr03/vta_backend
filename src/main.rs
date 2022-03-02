@@ -1,21 +1,24 @@
 use std::str::FromStr;
 
 use actix_identity::{CookieIdentityPolicy, IdentityService};
+use actix_web::{cookie::SameSite, web, App, HttpServer};
 use color_eyre::eyre::Result;
+use sqlx::{
+    mysql::{MySqlConnectOptions, MySqlPoolOptions},
+    Executor, MySqlPool,
+};
 use tracing::{debug, error, info, instrument};
 use tracing_actix_web::TracingLogger;
 use tracing_subscriber::prelude::__tracing_subscriber_SubscriberExt;
-use sqlx::{Executor, MySqlPool, mysql::{MySqlConnectOptions, MySqlPoolOptions}};
-use actix_web::{App, HttpServer, cookie::SameSite, web};
 use uuid::Uuid;
 
 mod config;
-mod users;
-mod state;
-mod server;
-mod sync;
-mod prelude;
 mod lists;
+mod prelude;
+mod server;
+mod state;
+mod sync;
+mod users;
 
 pub type Pool = MySqlPool;
 
@@ -33,7 +36,9 @@ fn init_telemetry() {
 
     // Start a new Jaeger trace pipeline.
     // Spans are exported in batch - recommended setup for a production application.
-    opentelemetry::global::set_text_map_propagator(opentelemetry::sdk::propagation::TraceContextPropagator::new());
+    opentelemetry::global::set_text_map_propagator(
+        opentelemetry::sdk::propagation::TraceContextPropagator::new(),
+    );
     let tracer = opentelemetry_jaeger::new_pipeline()
         .with_service_name(app_name)
         .install_batch(opentelemetry::runtime::TokioCurrentThread)
@@ -41,11 +46,13 @@ fn init_telemetry() {
 
     // Filter based on level - trace, debug, info, warn, error
     // Tunable via `RUST_LOG` env variable
-    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_|tracing_subscriber::EnvFilter::new("trace"));
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("trace"));
     // Create a `tracing` layer using the Jaeger tracer
     let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
     // Create a `tracing` layer to emit spans as structured logs to stdout
-    let formatting_layer = tracing_bunyan_formatter::BunyanFormattingLayer::new(app_name.into(), std::io::stdout);
+    let formatting_layer =
+        tracing_bunyan_formatter::BunyanFormattingLayer::new(app_name.into(), std::io::stdout);
     // Combined them all together in a `tracing` subscriber
     let subscriber = tracing_subscriber::Registry::default()
         .with(env_filter)
@@ -57,7 +64,7 @@ fn init_telemetry() {
 }
 
 #[actix_web::main]
-async fn main() -> Result<()>{
+async fn main() -> Result<()> {
     color_eyre::install()?;
 
     // let subscriber = FmtSubscriber::builder()
@@ -75,7 +82,11 @@ async fn main() -> Result<()>{
 
 #[instrument]
 async fn main_() -> Result<()> {
-    info!("Starting {} {}",env!("CARGO_BIN_NAME"),env!("CARGO_PKG_VERSION"));
+    info!(
+        "Starting {} {}",
+        env!("CARGO_BIN_NAME"),
+        env!("CARGO_PKG_VERSION")
+    );
     if !SECURE_COOKIE {
         eprintln!("Secure (httpS) cookies disabled in debug mode!");
         error!("Secure (httpS) cookies disabled in debug mode!")
@@ -91,48 +102,63 @@ async fn main_() -> Result<()> {
         options = options.password(&pw);
     }
 
-    let db_pool = MySqlPoolOptions::new().max_connections(config.database.max_conn).after_connect(|conn| Box::pin(async move {
-        conn.execute("SET SESSION sql_mode=STRICT_ALL_TABLES; SET SESSION innodb_strict_mode=ON;").await?;
-        Ok(())
-     })).connect_with(options).await?;
-    
+    let db_pool = MySqlPoolOptions::new()
+        .max_connections(config.database.max_conn)
+        .after_connect(|conn| {
+            Box::pin(async move {
+                conn.execute(
+                    "SET SESSION sql_mode=STRICT_ALL_TABLES; SET SESSION innodb_strict_mode=ON;",
+                )
+                .await?;
+                Ok(())
+            })
+        })
+        .connect_with(options)
+        .await?;
+
     debug!("Migrating DB");
     let mut stm = db_pool.begin().await?;
-    match sqlx::migrate!()
-    .run(&mut stm)
-    .await {
-        Ok(_) => {stm.commit().await?;},
+    match sqlx::migrate!().run(&mut stm).await {
+        Ok(_) => {
+            stm.commit().await?;
+        }
         Err(e) => {
             stm.rollback().await?;
-            error!(?e,"Migration failed");
+            error!(?e, "Migration failed");
             return Err(e.into());
-        },
+        }
     }
     debug!("Migration finished");
 
-
-    let server_id = match server::load_setting(&db_pool,SERVER_ID).await? {
+    let server_id = match server::load_setting(&db_pool, SERVER_ID).await? {
         Some(v) => Uuid::from_str(&v)?,
         None => {
             let id = Uuid::new_v4();
-            server::set_setting(&db_pool, SERVER_ID,&id.to_hyphenated_ref().to_string(),false).await?;
+            server::set_setting(
+                &db_pool,
+                SERVER_ID,
+                &id.to_hyphenated_ref().to_string(),
+                false,
+            )
+            .await?;
             id
         }
     };
-    debug!("Server id {}",server_id);
+    debug!("Server id {}", server_id);
 
-    let session_key = match server::load_setting(&db_pool,SESSION_KEY).await? {
+    let session_key = match server::load_setting(&db_pool, SESSION_KEY).await? {
         Some(v) => base64::decode(&v)?,
         None => {
-            let random_bytes: Vec<u8> = (0..32).map(|_| { rand::random::<u8>() }).collect();
-            server::set_setting(&db_pool, SESSION_KEY,&base64::encode(&random_bytes),false).await?;
+            let random_bytes: Vec<u8> = (0..32).map(|_| rand::random::<u8>()).collect();
+            server::set_setting(&db_pool, SESSION_KEY, &base64::encode(&random_bytes), false)
+                .await?;
             random_bytes
         }
     };
 
     let state = web::Data::new(state::State {
         sql: db_pool,
-        id: server_id
+        id: server_id,
     });
 
     let server = HttpServer::new(move || {
@@ -154,7 +180,10 @@ async fn main_() -> Result<()> {
     })
     .bind((config.listen_ip.as_ref(), config.listen_port))?;
 
-    info!("Starting server, listening on {}:{}",config.listen_ip,config.listen_port);
+    info!(
+        "Starting server, listening on {}:{}",
+        config.listen_ip, config.listen_port
+    );
     server.run().await?;
     info!("Shutting down");
     opentelemetry::global::shutdown_tracer_provider();

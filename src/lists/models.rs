@@ -52,7 +52,7 @@ pub struct ShareTokenEntry {
 }
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
-#[cfg_attr(test, derive(PartialEq,Clone))]
+#[cfg_attr(test, derive(PartialEq, Clone))]
 pub struct EntryMeaning {
     pub value: String,
     pub is_a: bool,
@@ -62,7 +62,7 @@ pub struct EntryMeaning {
 pub struct ListChange {
     pub name: String,
     pub name_a: String,
-    pub name_b: String
+    pub name_b: String,
 }
 
 pub type ListCreate = ListChange;

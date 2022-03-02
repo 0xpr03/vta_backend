@@ -1,8 +1,8 @@
+use sqlx::Row;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::hash::{Hash, Hasher};
-use sqlx::Row;
 
 use super::InvalidPermissionError;
 use crate::prelude::*;
@@ -89,7 +89,11 @@ impl sqlx::FromRow<'_, sqlx::mysql::MySqlRow> for ListChangedEntrySend {
             -1 => ListPermissions::Owner,
             0 => ListPermissions::Read,
             1 => ListPermissions::Write,
-            x => return Err(sqlx::Error::Decode(Box::new(InvalidPermissionError{found: x}))),
+            x => {
+                return Err(sqlx::Error::Decode(Box::new(InvalidPermissionError {
+                    found: x,
+                })))
+            }
         };
         Ok(ListChangedEntrySend {
             permissions,
@@ -140,14 +144,14 @@ impl sqlx::FromRow<'_, sqlx::mysql::MySqlRow> for ListChangedEntrySend {
 
 #[derive(Debug, Serialize)]
 pub struct ListChangedResponse {
-    pub delta: HashMap<Uuid,ListChangedEntrySend>,
+    pub delta: HashMap<Uuid, ListChangedEntrySend>,
     pub failures: Vec<EntrySyncFailure>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct EntrySyncFailure {
     pub id: Uuid,
-    pub error: Cow<'static,str>,
+    pub error: Cow<'static, str>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -159,7 +163,7 @@ pub struct EntryDeletedRequest {
 #[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
 pub struct EntryDeleteEntry {
     pub list: Uuid,
-    pub entry: Uuid
+    pub entry: Uuid,
 }
 
 impl Hash for EntryDeleteEntry {
@@ -239,7 +243,7 @@ pub struct Meaning {
 
 #[derive(Debug, Serialize)]
 pub struct EntryChangedResponse {
-    pub delta: HashMap<Uuid,EntryChangedEntry>,
+    pub delta: HashMap<Uuid, EntryChangedEntry>,
     pub ignored: Vec<Uuid>,
     pub invalid: Vec<Uuid>,
 }

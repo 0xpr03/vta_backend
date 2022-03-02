@@ -1,12 +1,12 @@
 use std::fmt;
 
+use crate::prelude::*;
 use actix_web::{HttpResponse, ResponseError};
 use thiserror::Error;
-use crate::prelude::*;
 
-pub mod routes;
-pub mod models;
 pub mod dao;
+pub mod models;
+pub mod routes;
 #[cfg(test)]
 mod tests;
 
@@ -21,34 +21,36 @@ pub enum ListError {
     #[error("db error")]
     Sqlx(#[from] sqlx::Error),
     #[error("invalid or missing auth")]
-    NotAuthenticated
+    NotAuthenticated,
 }
 
 impl ResponseError for ListError {
     fn error_response(&self) -> HttpResponse {
         trace!(?self);
         match self {
-            ListError::Serde(_) => HttpResponse::BadRequest().reason("invalid payload").finish(),
+            ListError::Serde(_) => HttpResponse::BadRequest()
+                .reason("invalid payload")
+                .finish(),
             ListError::NotAuthenticated => HttpResponse::Unauthorized().finish(),
             e => {
-                error!("{}",e);
+                error!("{}", e);
                 HttpResponse::InternalServerError().finish()
             }
         }
     }
 }
 
-type Result<T> = std::result::Result<T,ListError>;
+type Result<T> = std::result::Result<T, ListError>;
 
 /// Internal decoder for FromRow of ListPermission
 #[derive(Debug)]
-pub struct InvalidPermissionError{
-    pub found: i32
+pub struct InvalidPermissionError {
+    pub found: i32,
 }
 
 impl fmt::Display for InvalidPermissionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Invalid permission value {}!",self.found)
+        write!(f, "Invalid permission value {}!", self.found)
     }
 }
 

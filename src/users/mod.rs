@@ -1,10 +1,10 @@
+use crate::prelude::*;
 use actix_web::{HttpResponse, ResponseError};
 use thiserror::Error;
-use crate::prelude::*;
 
+pub mod dao;
 pub mod routes;
 pub mod user;
-pub mod dao;
 
 pub use dao::update_last_seen;
 
@@ -43,41 +43,53 @@ pub enum AuthError {
 
 fn jwt_err_into_response(error: &jsonwebtoken::errors::Error) -> HttpResponse {
     use jsonwebtoken::errors::ErrorKind::*;
-    HttpResponse::BadRequest().content_type("text/plain").body(match error.kind() {
-        InvalidToken => "invalid JWT token",
-        InvalidSignature => "invalid JWT signature",
-        InvalidEcdsaKey => "ecdsa key invalid",
-        InvalidRsaKey => "rsa key invalid",
-        ExpiredSignature => "rsa key invalid",
-        InvalidAlgorithmName => "rsa key invalid",
-        InvalidKeyFormat => "invalid key format",
-        InvalidIssuer => "iss invalid",
-        InvalidAlgorithm => "key/decode algorithm mismatch",
-        InvalidAudience => "aud invalid",
-        _ => "JWT invalid"
-    })
+    HttpResponse::BadRequest()
+        .content_type("text/plain")
+        .body(match error.kind() {
+            InvalidToken => "invalid JWT token",
+            InvalidSignature => "invalid JWT signature",
+            InvalidEcdsaKey => "ecdsa key invalid",
+            InvalidRsaKey => "rsa key invalid",
+            ExpiredSignature => "rsa key invalid",
+            InvalidAlgorithmName => "rsa key invalid",
+            InvalidKeyFormat => "invalid key format",
+            InvalidIssuer => "iss invalid",
+            InvalidAlgorithm => "key/decode algorithm mismatch",
+            InvalidAudience => "aud invalid",
+            _ => "JWT invalid",
+        })
 }
 
 impl ResponseError for AuthError {
     fn error_response(&self) -> HttpResponse {
         trace!(?self);
         match self {
-            AuthError::Uuid(_) => HttpResponse::BadRequest().reason("invalid UUID format").finish(),
-            AuthError::Serde(_) => HttpResponse::BadRequest().reason("invalid payload").finish(),
+            AuthError::Uuid(_) => HttpResponse::BadRequest()
+                .reason("invalid UUID format")
+                .finish(),
+            AuthError::Serde(_) => HttpResponse::BadRequest()
+                .reason("invalid payload")
+                .finish(),
             AuthError::Jwt(e) => jwt_err_into_response(e),
             AuthError::NotAuthenticated => HttpResponse::Unauthorized().finish(),
             AuthError::InvalidCredentials => HttpResponse::Forbidden().finish(),
-            AuthError::ExistingUser => HttpResponse::Conflict().reason("user already registered").finish(),
-            AuthError::ExistingLogin => HttpResponse::Conflict().reason("login already existing").finish(),
+            AuthError::ExistingUser => HttpResponse::Conflict()
+                .reason("user already registered")
+                .finish(),
+            AuthError::ExistingLogin => HttpResponse::Conflict()
+                .reason("login already existing")
+                .finish(),
             AuthError::LockedAccount => HttpResponse::Forbidden().reason("account locked").finish(),
             AuthError::DeletedUser => HttpResponse::Conflict().reason("account deleted").finish(),
-            AuthError::UnknownUser => HttpResponse::BadRequest().reason("account unknown").finish(),
+            AuthError::UnknownUser => HttpResponse::BadRequest()
+                .reason("account unknown")
+                .finish(),
             e => {
-                warn!("{}",e);
+                warn!("{}", e);
                 HttpResponse::InternalServerError().finish()
             }
         }
     }
 }
 
-type Result<T> = std::result::Result<T,AuthError>;
+type Result<T> = std::result::Result<T, AuthError>;

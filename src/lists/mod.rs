@@ -1,10 +1,10 @@
+use crate::prelude::*;
 use actix_web::{HttpResponse, ResponseError};
 use thiserror::Error;
-use crate::prelude::*;
 
-pub mod routes;
-mod models;
 mod dao;
+mod models;
+pub mod routes;
 #[cfg(test)]
 mod tests;
 
@@ -28,25 +28,29 @@ pub enum ListError {
     SharecodeInvalid,
     #[error("sharecode outdated")]
     SharecodeOutdated,
-    #[error("Failed to validate field {}",0)]
-    ValidationError(&'static str)
+    #[error("Failed to validate field {}", 0)]
+    ValidationError(&'static str),
 }
 
 impl ResponseError for ListError {
     fn error_response(&self) -> HttpResponse {
         trace!(?self);
         match self {
-            ListError::Serde(_) => HttpResponse::BadRequest().reason("invalid payload").finish(),
+            ListError::Serde(_) => HttpResponse::BadRequest()
+                .reason("invalid payload")
+                .finish(),
             ListError::ListNotFound => HttpResponse::NotFound().reason("invalid list").finish(),
             ListError::SharecodeInvalid => HttpResponse::NotFound().reason("invalid").finish(),
-            ListError::ListPermission => HttpResponse::Forbidden().reason("missing permissions for list").finish(),
+            ListError::ListPermission => HttpResponse::Forbidden()
+                .reason("missing permissions for list")
+                .finish(),
             ListError::NotAuthenticated => HttpResponse::Unauthorized().finish(),
             e => {
-                error!("{}",e);
+                error!("{}", e);
                 HttpResponse::InternalServerError().finish()
             }
         }
     }
 }
 
-type Result<T> = std::result::Result<T,ListError>;
+type Result<T> = std::result::Result<T, ListError>;
