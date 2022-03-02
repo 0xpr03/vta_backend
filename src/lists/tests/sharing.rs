@@ -16,8 +16,8 @@ async fn test_create_sharecode_multiuse() {
     let mut conn = &mut *db.conn().await;
     let mut rng = rand::thread_rng();
 
-    let user = UserId(register_test_user(&mut conn, &mut rng).await);
-    let user2 = UserId(register_test_user(&mut conn, &mut rng).await);
+    let user = register_test_user(&mut conn, &mut rng).await;
+    let user2 = register_test_user(&mut conn, &mut rng).await;
     let list1 = gen_list(&mut rng);
     let list_id = dao::create_list(&mut conn, &user, list1.clone()).await.unwrap();
 
@@ -42,8 +42,8 @@ async fn test_create_sharecode_single() {
     let mut conn = &mut *db.conn().await;
     let mut rng = rand::thread_rng();
 
-    let user = UserId(register_test_user(&mut conn, &mut rng).await);
-    let user2 = UserId(register_test_user(&mut conn, &mut rng).await);
+    let user = register_test_user(&mut conn, &mut rng).await;
+    let user2 = register_test_user(&mut conn, &mut rng).await;
     let list1 = gen_list(&mut rng);
     let list_id = dao::create_list(&mut conn, &user, list1.clone()).await.unwrap();
 
@@ -70,8 +70,8 @@ async fn test_sharecode_invalid_data() {
     let mut conn = &mut *db.conn().await;
     let mut rng = rand::thread_rng();
 
-    let user = UserId(register_test_user(&mut conn, &mut rng).await);
-    let user2 = UserId(register_test_user(&mut conn, &mut rng).await);
+    let user = register_test_user(&mut conn, &mut rng).await;
+    let user2 = register_test_user(&mut conn, &mut rng).await;
     let list1 = gen_list(&mut rng);
     let list_id = dao::create_list(&mut conn, &user, list1.clone()).await.unwrap();
 

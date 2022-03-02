@@ -6,7 +6,7 @@ async fn test_list_create_perm() {
     let mut conn = &mut *db.conn().await;
     let mut rng = rand::thread_rng();
 
-    let user = UserId(register_test_user(&mut conn, &mut rng).await);
+    let user = register_test_user(&mut conn, &mut rng).await;
 
     assert_eq!(dao::all_lists(&mut conn, &user).await.unwrap().len(), 0);
 
@@ -24,7 +24,7 @@ async fn test_list_create_perm() {
     assert_eq!(expected_list.foreign,false);
     assert_eq!(expected_list.change,false);
 
-    let second_user = UserId(register_test_user(&mut conn, &mut rng).await);
+    let second_user = register_test_user(&mut conn, &mut rng).await;
 
     // prepare lists for foreign list access
     let list1_content = gen_list(&mut rng);
@@ -102,7 +102,7 @@ async fn test_list_change() {
     let mut conn = &mut *db.conn().await;
     let mut rng = rand::thread_rng();
 
-    let user = UserId(register_test_user(&mut conn, &mut rng).await);
+    let user = register_test_user(&mut conn, &mut rng).await;
     // create
     let l1 = gen_list_create(&mut rng);
     let l1_id = dao::create_list(&mut conn, &user, l1.clone()).await.unwrap();
@@ -128,13 +128,15 @@ async fn test_list_change() {
     db.drop_async().await;
 }
 
+// TODO: verify shared list changes and entry changes
+
 #[actix_rt::test]
 async fn test_entry_change() {
     let db = DatabaseGuard::new().await;
     let mut conn = &mut *db.conn().await;
     let mut rng = rand::thread_rng();
 
-    let user = UserId(register_test_user(&mut conn, &mut rng).await);
+    let user = register_test_user(&mut conn, &mut rng).await;
     //# create
     let t_now = Utc::now().naive_utc();
     let l1 = gen_list_create(&mut rng);

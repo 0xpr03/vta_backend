@@ -31,42 +31,24 @@ impl TryFrom<i32> for LastSyncedKind {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ListDeletedRequest {
-    pub client: Uuid,
-    pub lists: Vec<ListDeleteEntry>,
+    pub since: Option<Timestamp>,
+    pub lists: Vec<Uuid>,
 }
 
 /// Server response to client for list delete sync
 #[derive(Debug, Serialize)]
 pub struct ListDeletedResponse {
     /// Delta of deleted lists for the client to store
-    pub delta: HashMap<Uuid,ListDeleteEntry>,
+    pub delta: HashSet<Uuid>,
     /// Lists that the server didn't know, thus no tombstone stored
     pub unknown: Vec<Uuid>,
     /// Lists for which the client doesn't have owner rights to delete them
     pub unowned: Vec<Uuid>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
-pub struct ListDeleteEntry {
-    pub list: Uuid,
-    pub time: Timestamp,
-}
-
-impl Hash for ListDeleteEntry {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.list.hash(state);
-    }
-}
-impl PartialEq for ListDeleteEntry {
-    fn eq(&self, other: &Self) -> bool {
-        self.list == other.list
-    }
-}
-impl Eq for ListDeleteEntry {}
-
 #[derive(Debug, Deserialize, Clone)]
 pub struct ListChangedRequest {
-    pub client: Uuid,
+    pub since: Option<Timestamp>,
     pub lists: Vec<ListChangedEntryRecv>,
 }
 
@@ -170,15 +152,14 @@ pub struct EntrySyncFailure {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct EntryDeletedRequest {
-    pub client: Uuid,
+    pub since: Option<Timestamp>,
     pub entries: Vec<EntryDeleteEntry>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
 pub struct EntryDeleteEntry {
     pub list: Uuid,
-    pub entry: Uuid,
-    pub time: Timestamp
+    pub entry: Uuid
 }
 
 impl Hash for EntryDeleteEntry {
@@ -202,7 +183,7 @@ pub struct EntryDeletedResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct EntryChangedRequest {
-    pub client: Uuid,
+    pub since: Option<Timestamp>,
     pub entries: Vec<EntryChangedEntry>,
 }
 

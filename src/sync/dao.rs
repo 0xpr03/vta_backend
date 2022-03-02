@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::collections::{HashSet, HashMap};
 use std::iter::repeat;
-use chrono::Utc;
+use chrono::{Utc, Timelike};
 use futures::TryStreamExt;
 use rand::Rng;
 use rand::distributions::Alphanumeric;
@@ -12,30 +12,35 @@ use super::*;
 use super::models::*;
 
 //#[instrument(skip(state,data))]
-pub async fn update_deleted_lists(sql: &mut DbConn, data: ListDeletedRequest, user: &Uuid) -> Result<ListDeletedResponse> {
+pub async fn update_deleted_lists(sql: &mut DbConn, data: ListDeletedRequest, user: &UserId) -> Result<ListDeletedResponse> {
     let t_now = Utc::now().naive_utc();
 
     let mut transaction = sql.begin().await?;
-    
-    let last_synced: Option<Timestamp> = last_synced(&mut transaction, user, &data.client, LastSyncedKind::ListsDeleted).await?;
 
-    let time_cond = if last_synced.is_none() {
+    update_last_seen(&mut transaction,user,t_now).await?;
+
+    let since = data.since.map(|v|v.with_nanosecond(0));
+
+    let time_cond = if since.is_none() {
         ""
     } else {
-        "AND time > ?"
+        "AND created >= ?"
     };
-    let sql_fetch = format!("SELECT list,time FROM deleted_list
+    let sql_fetch = format!("SELECT list FROM deleted_list
     WHERE user = ? {time}
     UNION
-    SELECT list,time FROM deleted_list_shared
+    SELECT list FROM deleted_list_shared
     WHERE user = ? {time}",time=time_cond);
-    let sql_t = sqlx::query_as::<_,ListDeleteEntry>(sql_fetch.as_str());
-    let stream = match last_synced {
-        Some(time) => sql_t.bind(user).bind(time).bind(user).bind(time),
-        None => sql_t.bind(user).bind(user)
+    let sql_t = sqlx::query_scalar::<_,Uuid>(sql_fetch.as_str());
+    let stream = match since {
+        Some(time) => {
+            dbg!(time);
+            sql_t.bind(user.0).bind(time).bind(user.0).bind(time)
+        },
+        None => sql_t.bind(user.0).bind(user.0)
     }.fetch(&mut transaction);
 
-    let mut return_lists: HashMap<Uuid,ListDeleteEntry> = stream.map_ok(|v|(v.list,v))
+    let mut return_lists: HashSet<Uuid> = stream
         .try_collect().await.context("retrieving changes to return")?;
     
     // four loops to retain statement cache in the transaction connection
@@ -45,50 +50,44 @@ pub async fn update_deleted_lists(sql: &mut DbConn, data: ListDeletedRequest, us
     let mut unknown = Vec::new();
     let mut unowned = Vec::new();
     let mut filtered = Vec::with_capacity(data.lists.len());
-    for mut v in data.lists.into_iter() {
-        if v.time > t_now {
-            info!(%v.time,%t_now,"ignoring change date in future");
-            v.time = t_now;
-        }
+    for v in data.lists.into_iter() {
         // don't process deletions we already know
-        if return_lists.remove(&v.list).is_none() {
+        if !return_lists.remove(&v) {
             let owner = sqlx::query_as::<_,(Uuid,)>("SELECT owner FROM lists WHERE uuid = ?")
-                .bind(v.list).fetch_optional(&mut transaction).await.context("retrieving owner of lists")?;
+                .bind(v).fetch_optional(&mut transaction).await.context("retrieving owner of lists")?;
             if let Some((owner,)) = owner {
                 // only owners can delete lists
-                if owner == *user {
+                if owner == user.0 {
                     filtered.push(v);
                 } else {
-                    trace!(list=%v.list,"Ignoring non-owned list deletion request");
-                    unowned.push(v.list);
+                    trace!(list=%v,"Ignoring non-owned list deletion request");
+                    unowned.push(v);
                 }
             } else {
-                trace!(list=%v.list,"Ignoring unknown list deletion request");
-                unknown.push(v.list);
+                trace!(list=%v,"Ignoring unknown list deletion request");
+                unknown.push(v);
             }
         }
     }
     // add tombstone for owner
     for v in filtered.iter() {
-        sqlx::query("INSERT IGNORE INTO deleted_list (user,list,time) VALUES(?,?,?)")
-            .bind(user).bind(v.list).bind(v.time)
+        sqlx::query("INSERT IGNORE INTO deleted_list (user,list,created) VALUES(?,?,?)")
+            .bind(user.0).bind(v).bind(t_now)
             .execute(&mut transaction).await.context("inserting deleted_list")?;
     }
     // add tombstone for shared users
     for v in filtered.iter() {
-        sqlx::query("INSERT INTO deleted_list_shared (user,list,`time`) 
+        sqlx::query("INSERT INTO deleted_list_shared (user,list,created) 
             SELECT user,list,? FROM list_permissions WHERE list = ?")
-            .bind(v.time).bind(v.list)
+            .bind(t_now).bind(v)
             .execute(&mut transaction).await.context("inserting deleted_list_shared")?;
     }
     // delete list
     for v in filtered.iter() {
         sqlx::query("DELETE FROM lists WHERE owner = ? AND uuid = ?")
-            .bind(user).bind(v.list)
+            .bind(user.0).bind(v)
             .execute(&mut transaction).await.context("deleting lists")?;
     }
-
-    update_last_synced(&mut transaction,user, &data.client, LastSyncedKind::ListsDeleted, t_now).await?;
 
     transaction.commit().await?;
 
@@ -103,20 +102,18 @@ pub async fn update_deleted_lists(sql: &mut DbConn, data: ListDeletedRequest, us
 pub async fn update_changed_lists(sql: &mut MySqlConnection, data: ListChangedRequest, user: &UserId) -> Result<ListChangedResponse> {
     let t_now = Utc::now().naive_utc();
     let mut transaction = sql.begin().await?;
-    
-    let last_synced = last_synced(&mut transaction, &user.0, &data.client, LastSyncedKind::ListsChanged).await?;
-    trace!(?last_synced, "Last synced");
+    let since = data.since.map(|v|v.with_nanosecond(0));
 
     // resolve all changed entries we should send back
-    let time_cond_lists = if last_synced.is_none() {
+    let time_cond_lists = if since.is_none() {
         ""
     } else {
-        "AND l.changed > ?"
+        "AND l.changed >= ?"
     };
-    let time_cond_shared = if last_synced.is_none() {
+    let time_cond_shared = if since.is_none() {
         ""
     } else {
-        "AND ( l.changed > ? OR p.changed > ?)"
+        "AND ( l.changed >= ? OR p.changed >= ?)"
     };
     let sql_fetch_resp = format!("SELECT -1 as permissions,uuid,name,name_a,name_b,changed,created
     FROM lists l WHERE owner = ? {time_cond_lists}
@@ -127,7 +124,7 @@ pub async fn update_changed_lists(sql: &mut MySqlConnection, data: ListChangedRe
     WHERE p.user = ? {time_cond_shared}
     ",time_cond_lists=time_cond_lists,time_cond_shared=time_cond_shared);
     let sql_t = sqlx::query_as::<_,ListChangedEntrySend>(sql_fetch_resp.as_str());
-    let stream = match last_synced {
+    let stream = match since {
         Some(time) => sql_t.bind(&user.0).bind(time).bind(&user.0).bind(time).bind(time),
         None => sql_t.bind(&user.0).bind(&user.0)
     }.fetch(&mut transaction);
@@ -217,8 +214,6 @@ pub async fn update_changed_lists(sql: &mut MySqlConnection, data: ListChangedRe
         }
     }
     trace!(changed=updated,new=inserted,outdated=outdated,from=amount,"filtered deleted");
-        
-    update_last_synced(&mut transaction, &user.0, &data.client, LastSyncedKind::ListsChanged, t_now).await?;
 
     transaction.commit().await?;
 
@@ -233,30 +228,29 @@ pub async fn update_changed_lists(sql: &mut MySqlConnection, data: ListChangedRe
 }
 
 //#[instrument(skip(state,data))]
-pub async fn update_deleted_entries(sql: &mut MySqlConnection, mut data: EntryDeletedRequest, user: &UserId) -> Result<EntryDeletedResponse> {
+pub async fn update_deleted_entries(sql: &mut MySqlConnection, data: EntryDeletedRequest, user: &UserId) -> Result<EntryDeletedResponse> {
     let t_now = Utc::now().naive_utc();
 
     let mut transaction = sql.begin().await?;
-
-    let last_synced = last_synced(&mut transaction, &user.0, &data.client, LastSyncedKind::EntriesDeleted).await?;
+    let since = data.since.map(|v|v.with_nanosecond(0));
 
     // first retrieve deleted entries to send back
-    let time_addition = if last_synced.is_some() {
-        "AND d.time > ?"
+    let time_addition = if since.is_some() {
+        "AND d.created >= ?"
     } else {
         ""
     };
     let sql_fetch = format!(
-        "SELECT d.list,d.time,d.entry FROM deleted_entry d
+        "SELECT d.list,d.entry FROM deleted_entry d
         JOIN lists l ON d.list = l.uuid
         WHERE l.owner = ? {time}
         UNION
-        SELECT d.list,d.time,d.entry FROM deleted_entry d
+        SELECT d.list,d.entry FROM deleted_entry d
         JOIN list_permissions p ON d.list = p.list
         WHERE p.user = ? {time}",
         time = time_addition);
     let q = sqlx::query_as::<_,EntryDeleteEntry>(sql_fetch.as_str());
-    let stream = match last_synced { // Not for update
+    let stream = match since { // Not for update
         Some(time) => q.bind(user.0).bind(time).bind(user.0).bind(time),
         None => q.bind(user.0).bind(user.0)
     }.fetch(&mut transaction);
@@ -269,17 +263,13 @@ pub async fn update_deleted_entries(sql: &mut MySqlConnection, mut data: EntryDe
     let sqlt_owner = "SELECT owner FROM lists WHERE uuid = ?";
     let sqlt_perms_shared = "SELECT `write` FROM list_permissions WHERE list = ? AND user = ?";
     let sqlt_delete_entry = "DELETE FROM entries WHERE uuid = ?";
-    let sqlt_tombstone = "INSERT INTO deleted_entry (list,`entry`,`time`) VALUES (?,?,?)";
+    let sqlt_tombstone = "INSERT INTO deleted_entry (list,`entry`,created) VALUES (?,?,?)";
     let mut list_deleted = HashSet::new();
     // map of lists and whether we have change permissions
     let mut list_perm: HashMap<Uuid,bool> = HashMap::new();
     let mut invalid = Vec::new();
     let mut ignored = Vec::new();
-    for mut e in data.entries.into_iter() {
-        if e.time > t_now {
-            info!(%e.time,%t_now,"ignoring change date in future");
-            e.time = t_now;
-        }
+    for e in data.entries.into_iter() {
         // remove entries from return data that we got already send
         // if not in return set, insert to temp table, otherwise known
         if return_delta.remove(&e.entry).is_some() {
@@ -336,14 +326,12 @@ pub async fn update_deleted_entries(sql: &mut MySqlConnection, mut data: EntryDe
             .execute(&mut transaction).await.context("deleting entry")?;
         if res.rows_affected() != 0 {
             // tombstone only for existing entries
-            sqlx::query(sqlt_tombstone).bind(e.list).bind(e.entry).bind(e.time)
+            sqlx::query(sqlt_tombstone).bind(e.list).bind(e.entry).bind(t_now)
                 .execute(&mut transaction).await.context("inserting tombstone")?;
         } else {
             ignored.push(e.entry);
         }
     }
-
-    update_last_synced(&mut transaction, &user.0, &data.client, LastSyncedKind::EntriesDeleted, t_now).await?;
 
     transaction.commit().await?;
 
@@ -368,12 +356,11 @@ pub async fn update_changed_entries(sql: &mut MySqlConnection, data: EntryChange
 
 async fn _update_changed_entries(transaction: &mut Transaction<'_, MySql>, data: EntryChangedRequest, user: &UserId) -> Result<EntryChangedResponse> {
     let t_now = Utc::now().naive_utc();
-    
-    let last_synced = last_synced(&mut *transaction,&user.0,&data.client,LastSyncedKind::EntriesChanged).await?;
+    let since = data.since.map(|v|v.with_nanosecond(0));
 
     // fetch data to return
     // don't request meanings already, we can do that after checking for newer data in the payload
-    let time_addition = if last_synced.is_some() {
+    let time_addition = if since.is_some() {
         "AND e.updated >= ?"
     } else {
         ""
@@ -386,7 +373,7 @@ async fn _update_changed_entries(transaction: &mut Transaction<'_, MySql>, data:
     JOIN lists l ON e.list = l.uuid
     WHERE l.owner = ? {time}",time=time_addition);
     let q = sqlx::query_as::<_,EntryChangedEntryBlank>(sql_t.as_str());
-    let stream = match last_synced {
+    let stream = match since {
         Some(time) => {
             q.bind(user.0).bind(time).bind(user.0).bind(time)
         },
@@ -509,27 +496,9 @@ async fn _update_changed_entries(transaction: &mut Transaction<'_, MySql>, data:
         return_entries.insert(id,e.into_full(meanings));
     }
 
-    update_last_synced(&mut *transaction,&user.0,&data.client,LastSyncedKind::EntriesChanged,t_now).await?;
-
     Ok(EntryChangedResponse {
         delta: return_entries,
         ignored,
         invalid,
     })
-}
-
-async fn last_synced(sql: &mut MySqlConnection, user: &Uuid, client: &Uuid, kind: LastSyncedKind) -> Result<Option<Timestamp>> {
-    let last_synced: Option<Timestamp> = sqlx::query_scalar("SELECT date FROM last_synced WHERE `type` = ? AND user_id = ? AND client = ? FOR UPDATE")
-        .bind(kind as i32).bind(user).bind(client)
-        .fetch_optional(sql).await.context("selecting last_synced")?;
-        // .map(|v|v.date);
-
-    Ok(last_synced)
-}
-
-async fn update_last_synced(sql: &mut MySqlConnection, user: &Uuid, client: &Uuid, kind: LastSyncedKind,time: Timestamp) -> Result<()> {
-    sqlx::query("INSERT INTO last_synced (user_id,client,type,date) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE date=VALUES(date)")
-        .bind(user).bind(client).bind(kind as i32).bind(time)
-        .execute(sql).await.context("updating last_synced time")?;
-    Ok(())
 }

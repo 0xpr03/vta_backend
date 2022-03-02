@@ -33,19 +33,19 @@ async fn insert_entries(sql: &mut DbConn, entries: &[EntryChangedEntry]) {
 }
 
 /// Insert list, test only
-async fn insert_list(sql: &mut DbConn, user: &Uuid, list: &ListChangedEntryRecv) {
+async fn insert_list(sql: &mut DbConn, user: &UserId, list: &ListChangedEntryRecv) {
     sqlx::query("INSERT INTO lists (owner,uuid,name,name_a,name_b,changed,created) VALUES(?,?,?,?,?,?,?)")
-        .bind(user).bind(list.uuid).bind(&list.name).bind(&list.name_a).bind(&list.name_b).bind(list.changed).bind(list.created)
+        .bind(user.0).bind(list.uuid).bind(&list.name).bind(&list.name_a).bind(&list.name_b).bind(list.changed).bind(list.created)
         .execute(sql)
         .await.unwrap();
 }
 
 /// Insert list permissions, test only
-async fn insert_list_perm(sql: &mut DbConn, user: &Uuid, list: &Uuid,change: bool, reshare: bool) {
+async fn insert_list_perm(sql: &mut DbConn, user: &UserId, list: &Uuid,change: bool, reshare: bool) {
     let t_now = Utc::now().naive_utc();
     sqlx::query("INSERT INTO list_permissions (user,list,`write`,`reshare`,changed) VALUES(?,?,?,?,?)
         ON DUPLICATE KEY UPDATE changed=VALUES(changed), `write`=VALUES(`write`), reshare=VALUES(reshare)")
-        .bind(user).bind(list).bind(change).bind(&reshare).bind(t_now)
+        .bind(user.0).bind(list).bind(change).bind(&reshare).bind(t_now)
         .execute(sql)
         .await.unwrap();
 }

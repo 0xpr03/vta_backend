@@ -1,6 +1,7 @@
 use super::dao;
 use chrono::Duration;
 use chrono::Utc;
+use sqlx::Executor;
 use crate::prelude::*;
 use crate::prelude::tests::*;
 use super::AuthError;
@@ -109,7 +110,28 @@ async fn test_user_delete() {
     let res = dao::user_deleted(&mut conn,&user).await.unwrap();
     assert_eq!(true,res);
 
-    db.drop_async().await;    
+    db.drop_async().await;
+}
+
+#[actix_rt::test]
+async fn test_last_seen() {
+    let db = DatabaseGuard::new().await;
+    let mut conn = &mut *db.conn().await;
+
+    let(claims,key,key_type) = gen_user();
+    let user = UserId(claims.iss);
+    dao::register_user(&mut conn,&claims,&key,key_type.clone()).await.unwrap();
+
+    let time = Utc::now().naive_utc();
+    dao::update_last_seen(&mut conn, &user, time).await.unwrap();
+
+    let res: Timestamp = sqlx::query_scalar::<_,Timestamp>("SELECT last_seen FROM users WHERE uuid = ?")
+        .bind(user.0)
+        .fetch_one(&mut *conn)
+        .await.unwrap();
+    assert_eq!(res.timestamp(),time.timestamp());
+
+    db.drop_async().await;
 }
 
 fn gen_mail_pw() -> (String,String) {

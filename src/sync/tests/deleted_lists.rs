@@ -1,3 +1,4 @@
+use actix_rt::time::sleep;
 use chrono::Duration;
 
 use crate::prelude::*;
@@ -18,16 +19,17 @@ async fn test_deleted_lists() {
     for l in lists.iter() {
         insert_list(&mut conn, &user,l).await;
     }
+
     // construct delete requests
     let del_req = ListDeletedRequest {
-        client: Uuid::new_v4(),
+        since: None,
         lists: vec![
             // unknown list
-            ListDeleteEntry {list: Uuid::new_v4(), time: timestamp("2015-05-01 02:03:04")},
+            Uuid::new_v4(),
             // known list
-            ListDeleteEntry {list: lists[0].uuid.clone(), time: timestamp("2015-05-01 02:03:04")},
+            lists[0].uuid.clone(),
             // Known but future date
-            ListDeleteEntry {list: lists[1].uuid.clone(), time: random_future_date(&mut rng)}
+            lists[1].uuid.clone()
         ]
     };
     let t_now = chrono::Utc::now().naive_utc();
@@ -37,34 +39,38 @@ async fn test_deleted_lists() {
     assert_eq!(0,res.unowned.len());
     // one unknown list delete entry
     assert_eq!(1,res.unknown.len());
-    assert!(res.unknown.contains(&del_req.lists[0].list));
-    // sanity check revisiting should give us a delta of 0
-    let empty_data_d = ListDeletedRequest{client: del_req.client.clone(), lists: Vec::new()};
-    let res = dao::update_deleted_lists(&mut conn, empty_data_d, &&user).await.unwrap();
+    assert!(res.unknown.contains(&del_req.lists[0]));
+
+    dbg!(Utc::now().naive_utc());
+    sleep(std::time::Duration::from_secs(2)).await;
+    let time1 = Utc::now().naive_utc();
+    dbg!(time1);
+
+    // sanity check revisiting later should give us a delta of 0
+    let empty_data_d = ListDeletedRequest{since: Some(time1), lists: Vec::new()};
+    let res = dao::update_deleted_lists(&mut conn, empty_data_d, &user).await.unwrap();
+    dbg!(&res.delta);
     assert_eq!(0,res.delta.len());
     assert_eq!(0,res.unowned.len());
     assert_eq!(0,res.unknown.len());
 
-    // retrieve all changes as new client
-    let empty_data = ListDeletedRequest{client: Uuid::new_v4(), lists: Vec::new()};
-    let res = dao::update_deleted_lists(&mut conn, empty_data, &&user).await.unwrap();
+    // retrieve all changes
+    let empty_data = ListDeletedRequest{since: None, lists: Vec::new()};
+    let res = dao::update_deleted_lists(&mut conn, empty_data, &user).await.unwrap();
     assert_eq!(2,res.delta.len());
     // valid entry
-    let first = res.delta.get(&del_req.lists[1].list).expect("expected valid list in delta not found");
-    assert_eq!(first.time,del_req.lists[1].time);
-    // second valid but time should be corrected
-    let second = res.delta.get(&del_req.lists[2].list).expect("expected time-correct list in delta not found");
-    assert_ne!(second.time,del_req.lists[2].time);
-    assert!(second.time - t_now < Duration::seconds(1));
+    let first = res.delta.get(&del_req.lists[1]).expect("expected valid list in delta not found");
+    // valid entry
+    let second = res.delta.get(&del_req.lists[2]).expect("expected valid list in delta not found");
 
     // again with 1 old, 1 new entry testing delta + deduplication of return
     let del_eq_2 = ListDeletedRequest {
-        client: Uuid::new_v4(),
+        since: None,
         lists: vec![
             // old, existing entry but unsend to this client
-            ListDeleteEntry {list: lists[1].uuid.clone(), time: random_naive_date(&mut rng, true)},
+            lists[1].uuid.clone(),
             // new valid entry
-            ListDeleteEntry {list: lists[2].uuid.clone(), time: random_future_date(&mut rng)}
+            lists[2].uuid.clone()
         ]
     };
     let res = dao::update_deleted_lists(&mut conn, del_eq_2.clone(), &user).await.unwrap();
@@ -72,7 +78,6 @@ async fn test_deleted_lists() {
     assert_eq!(0,res.unowned.len());
     assert_eq!(0,res.unknown.len());
     let item = res.delta.get(&lists[0].uuid).expect("expected list from delta not found");
-    assert_eq!(item.time,del_req.lists[1].time);
 
     db.drop_async().await;
 }
@@ -105,10 +110,10 @@ async fn test_deleted_lists_shared() {
     
     // construct delete requests
     let del_req = ListDeletedRequest {
-        client: Uuid::new_v4(),
+        since: None,
         lists: vec![
             // known list
-            ListDeleteEntry {list: lists[0].uuid.clone(), time: random_naive_date(&mut rng, true)},
+            lists[0].uuid.clone(),
         ]
     };
     // now try to delete that from user2
@@ -117,14 +122,14 @@ async fn test_deleted_lists_shared() {
     assert_eq!(0,res.unknown.len());
     // and this user shouldn't be allowed, no owner
     assert_eq!(1,res.unowned.len());
-    assert!(res.unowned.contains(&del_req.lists[0].list));
+    assert!(res.unowned.contains(&del_req.lists[0]));
 
     let res = dao::update_deleted_lists(&mut conn, del_req.clone(), &user_3).await.unwrap();
     assert_eq!(0,res.delta.len());
     assert_eq!(0,res.unknown.len());
     // same for user 3 with read-only
     assert_eq!(1,res.unowned.len());
-    assert!(res.unowned.contains(&del_req.lists[0].list));
+    assert!(res.unowned.contains(&del_req.lists[0]));
 
     // Now delete it from user1, owner
     let res = dao::update_deleted_lists(&mut conn, del_req.clone(), &user_1).await.unwrap();
@@ -133,27 +138,27 @@ async fn test_deleted_lists_shared() {
     assert_eq!(0,res.unowned.len());
 
     // which should be visible for user2
-    let new_req = ListDeletedRequest {client: Uuid::new_v4(),lists: Vec::new()};
+    let new_req = ListDeletedRequest {since: None,lists: Vec::new()};
     let res = dao::update_deleted_lists(&mut conn, new_req.clone(), &user_2).await.unwrap();
     assert_eq!(1,res.delta.len());
     assert_eq!(0,res.unknown.len());
     assert_eq!(0,res.unowned.len());
-    assert_ne!(None,res.delta.get(&del_req.lists[0].list));
+    assert_ne!(None,res.delta.get(&del_req.lists[0]));
     // and user 3
     let res = dao::update_deleted_lists(&mut conn, new_req, &user_3).await.unwrap();
     assert_eq!(1,res.delta.len());
     assert_eq!(0,res.unknown.len());
     assert_eq!(0,res.unowned.len());
-    assert_ne!(None,res.delta.get(&del_req.lists[0].list));
+    assert_ne!(None,res.delta.get(&del_req.lists[0]));
 
     // now delete user1, the tombstones for user 2&3 should remain
-    crate::users::dao::delete_user(&mut conn, &UserId(user_1)).await.unwrap();
-    let new_req = ListDeletedRequest {client: Uuid::new_v4(),lists: Vec::new()};
+    crate::users::dao::delete_user(&mut conn, &user_1).await.unwrap();
+    let new_req = ListDeletedRequest {since: None,lists: Vec::new()};
     let res = dao::update_deleted_lists(&mut conn, new_req.clone(), &user_2).await.unwrap();
-    assert_ne!(None,res.delta.get(&del_req.lists[0].list));
+    assert_ne!(None,res.delta.get(&del_req.lists[0]));
     // and user 3
     let res = dao::update_deleted_lists(&mut conn, new_req, &user_3).await.unwrap();
-    assert_ne!(None,res.delta.get(&del_req.lists[0].list));
+    assert_ne!(None,res.delta.get(&del_req.lists[0]));
 
     db.drop_async().await;
 }

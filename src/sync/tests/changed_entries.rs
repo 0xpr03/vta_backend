@@ -1,5 +1,6 @@
 use std::thread;
 
+use actix_rt::time::sleep;
 use chrono::Duration;
 
 use crate::prelude::*;
@@ -13,30 +14,29 @@ async fn test_basic_changed_entries() {
     let mut conn = &mut *db.conn().await;
     let mut rng = rand::thread_rng();
 
-    let user = UserId(register_test_user(&mut conn, &mut rng).await);
+    let user = register_test_user(&mut conn, &mut rng).await;
 
     // prepare lists
     let list1 = gen_list(None);
     let list2 = gen_list(None);
-    insert_list(&mut conn, &user.0, &list1).await;
-    insert_list(&mut conn, &user.0, &list2).await;
+    insert_list(&mut conn, &user, &list1).await;
+    insert_list(&mut conn, &user, &list2).await;
     
     // insert some entries
-    let client1 = Uuid::new_v4();
+    let time1 = Utc::now().naive_utc();
 
     let entries1: Vec<_> = (0..10).into_iter().map(|_|gen_entry(&list1.uuid,None)).collect();
     let entries2: Vec<_> = (0..5).into_iter().map(|_|gen_entry(&list2.uuid,None)).collect();
 
     let entries: Vec<EntryChangedEntry> = entries1.iter().chain(entries2.iter()).map(|v|v.clone()).collect();
-    let data = EntryChangedRequest { client: client1.clone(), entries };
+    let data = EntryChangedRequest { since: Some(time1), entries };
 
     let resp = dao::update_changed_entries(&mut conn, data, &user).await.unwrap();
     assert_eq!(resp.ignored.len(),0);
     assert_eq!(resp.invalid.len(),0);
     assert_eq!(resp.delta.len(),0);
     // read them back
-    let client2 = Uuid::new_v4();
-    let resp = dao::update_changed_entries(&mut conn, EntryChangedRequest { client: client2.clone(), entries: Vec::new() }, &user).await.unwrap();
+    let resp = dao::update_changed_entries(&mut conn, EntryChangedRequest { since: Some(time1), entries: Vec::new() }, &user).await.unwrap();
     assert_eq!(resp.ignored.len(),0);
     assert_eq!(resp.invalid.len(),0);
     assert_eq!(resp.delta.len(),entries1.len()+entries2.len());
@@ -66,12 +66,11 @@ async fn test_basic_changed_entries() {
     let mut deleted = gen_entry(&list1.uuid,Some(deleted_date.clone()));
     deleted.uuid = entries1[0].uuid.clone();
     let del_req = EntryDeletedRequest {
-        client: Uuid::new_v4(),
+        since: Some(time1 + Duration::seconds(1)),
         entries: vec![
             EntryDeleteEntry {
                 list: list1.uuid.clone(),
-                entry: deleted.uuid.clone(),
-                time: entries1[0].changed + Duration::seconds(1)
+                entry: deleted.uuid.clone()
             }]
     };
     let resp = dao::update_deleted_entries(&mut conn, del_req,&user).await.unwrap();
@@ -80,13 +79,16 @@ async fn test_basic_changed_entries() {
     assert_eq!(resp.delta.len(),0);
 
     // wait for 1 second to wait for the changes to settle
-    thread::sleep(std::time::Duration::from_secs(2));
+    //thread::sleep(std::time::Duration::from_secs(1));
+    //let time2 = time1 + Duration::seconds(1);
+    dbg!(time1);
 
     // now perform the change request
     let entries_changed = vec![&new,&changed,&deleted];
     println!("{:#?}",entries_changed);
     let resp = dao::update_changed_entries(&mut conn, 
-        EntryChangedRequest { client: client2.clone(),
+        EntryChangedRequest {
+            since: Some(time1),
             entries: entries_changed.iter().map(|v|(*v).clone()).collect()
         }, &user).await.unwrap();
     assert_eq!(resp.ignored,vec![deleted.uuid.clone()]);
@@ -98,7 +100,7 @@ async fn test_basic_changed_entries() {
 
     // and read those changes back with client1
     // this only works correctly if we use the updated-date and not the transmitted "changed" date
-    let resp = dao::update_changed_entries(&mut conn, EntryChangedRequest { client: client1.clone(), entries: Vec::new() }, &user).await.unwrap();
+    let resp = dao::update_changed_entries(&mut conn, EntryChangedRequest { since: Some(time1), entries: Vec::new() }, &user).await.unwrap();
     assert_eq!(resp.ignored.len(),0);
     assert_eq!(resp.invalid.len(),0);
     assert_eq!(resp.delta.len(),entries1.len()+entries2.len()); // -1 deleted + 1 new
@@ -133,41 +135,49 @@ async fn test_basic_changed_entries_shared() {
     let mut conn = &mut *db.conn().await;
     let mut rng = rand::thread_rng();
 
-    let user = UserId(register_test_user(&mut conn, &mut rng).await);
-    let second_user = UserId(register_test_user(&mut conn, &mut rng).await);
+    let user = register_test_user(&mut conn, &mut rng).await;
+    let second_user = register_test_user(&mut conn, &mut rng).await;
 
     // prepare lists
     let list1 = gen_list(None);
     let list2 = gen_list(None);
     let list3 = gen_list(None);
     let list4 = gen_list(None);
-    insert_list(&mut conn, &user.0, &list1).await;
-    insert_list(&mut conn, &second_user.0, &list2).await;
-    insert_list(&mut conn, &second_user.0, &list3).await;
-    insert_list(&mut conn, &second_user.0, &list4).await;
+    insert_list(&mut conn, &user, &list1).await;
+    insert_list(&mut conn, &second_user, &list2).await;
+    insert_list(&mut conn, &second_user, &list3).await;
+    insert_list(&mut conn, &second_user, &list4).await;
 
     // give specific access
-    insert_list_perm(&mut conn,&user.0,&list2.uuid,false,true).await;
-    insert_list_perm(&mut conn,&user.0,&list3.uuid,true,true).await;
+    insert_list_perm(&mut conn,&user,&list2.uuid,false,true).await;
+    insert_list_perm(&mut conn,&user,&list3.uuid,true,true).await;
     
     // insert some entries
-    let client1 = Uuid::new_v4();
+    //let client1 = Uuid::new_v4();
+    
+    sleep(std::time::Duration::from_secs(1)).await;
+    let time1 = Utc::now().naive_utc();
+    dbg!(time1);
 
+    // own list
     let e_l1 = gen_entry(&list1.uuid,None);
+    // only read (invalid)
     let e_l2 = gen_entry(&list2.uuid,None);
+    // with write
     let e_l3 = gen_entry(&list3.uuid,None);
+    // unshared (invalid)
     let e_l4 = gen_entry(&list4.uuid,None);
 
     let entries = vec![&e_l1,&e_l2,&e_l3,&e_l4];
 
-    let data = EntryChangedRequest { client: client1.clone(), entries: entries.iter().map(|v|(*v).clone()).collect() };
+    let data = EntryChangedRequest { since: None, entries: entries.iter().map(|v|(*v).clone()).collect() };
 
     let resp = dao::update_changed_entries(&mut conn, data, &user).await.unwrap();
     assert_eq!(resp.ignored.len(),0);
     assert_eq!(resp.invalid.len(),2);
     assert_eq!(resp.delta.len(),0);
     // read them back
-    let resp = dao::update_changed_entries(&mut conn, EntryChangedRequest { client: client1.clone(), entries: Vec::new() }, &user).await.unwrap();
+    let resp = dao::update_changed_entries(&mut conn, EntryChangedRequest { since: Some(time1), entries: Vec::new() }, &user).await.unwrap();
     assert_eq!(resp.ignored.len(),0);
     assert_eq!(resp.delta.len(),2);
     // assert that only these two were written

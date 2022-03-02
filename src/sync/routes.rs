@@ -18,7 +18,7 @@ async fn list_sync_del(reg: web::Json<ListDeletedRequest>, id: Identity, state: 
     let user = Uuid::parse_str(&identity.ok_or(ListError::NotAuthenticated)?)?;
     let data = reg.into_inner();
 
-    let response = dao::update_deleted_lists(&mut *state.sql.acquire().await?, data, &user).await?;
+    let response = dao::update_deleted_lists(&mut *state.sql.acquire().await?, data, &UserId(user)).await?;
     Ok(HttpResponse::Ok().json(response))
 }
 

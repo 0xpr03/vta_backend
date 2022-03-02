@@ -199,8 +199,8 @@ CREATE TABLE IF NOT EXISTS deleted_category
 (
     user BINARY(16) NOT NULL,
     category BINARY(16) NOT NULL PRIMARY KEY,
-    deleted DATETIME NOT NULL,
-    INDEX `u_deleted` (`user`,`deleted`),
+    created DATETIME NOT NULL,
+    INDEX `u_deleted` (`user`,`created`),
     CONSTRAINT `fk_user_id_delcat`
         FOREIGN KEY (user) REFERENCES users (uuid)
         ON DELETE CASCADE
@@ -211,8 +211,8 @@ CREATE TABLE IF NOT EXISTS deleted_list
 (
     user BINARY(16) NOT NULL,
     list BINARY(16) NOT NULL PRIMARY KEY,
-    `time` DATETIME NOT NULL,
-    INDEX `u_deleted` (`user`,`time`),
+    created DATETIME NOT NULL,
+    INDEX `u_deleted` (`user`,`created`),
     INDEX (`user`,`list`),
     INDEX (list),
     CONSTRAINT `fk_user_id_dellist`
@@ -225,7 +225,7 @@ CREATE TABLE IF NOT EXISTS deleted_list_shared
 (
     user BINARY(16) NOT NULL,
     list BINARY(16) NOT NULL,
-    `time` DATETIME NOT NULL,
+    created DATETIME NOT NULL,
     PRIMARY KEY (user,list),
     INDEX (list),
     INDEX (user),
@@ -239,8 +239,8 @@ CREATE TABLE IF NOT EXISTS deleted_entry
 (
     list BINARY(16) NOT NULL,
     `entry` BINARY(16) NOT NULL PRIMARY KEY,
-    `time` DATETIME NOT NULL,
-    INDEX `l_deleted` (`list`,`time`),
+    created DATETIME NOT NULL,
+    INDEX `l_deleted` (`list`,`created`),
     INDEX (list),
     CONSTRAINT `fk_list_id_delentry`
         FOREIGN KEY (list) REFERENCES lists (uuid)
@@ -251,7 +251,7 @@ CREATE TABLE IF NOT EXISTS deleted_entry
 CREATE TABLE IF NOT EXISTS deleted_user
 (
     user BINARY(16) NOT NULL PRIMARY KEY,
-    `time` DATETIME NOT NULL DEFAULT current_timestamp()
+    created DATETIME NOT NULL DEFAULT current_timestamp()
 );
 
 CREATE TABLE IF NOT EXISTS settings

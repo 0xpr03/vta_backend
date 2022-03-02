@@ -5,6 +5,9 @@ use crate::prelude::*;
 pub mod routes;
 pub mod user;
 pub mod dao;
+
+pub use dao::update_last_seen;
+
 #[cfg(test)]
 mod tests;
 

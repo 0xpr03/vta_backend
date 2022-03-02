@@ -96,11 +96,11 @@ pub async fn delete_user(sql: &mut MySqlConnection, user: &UserId) -> Result<()>
     }
 
     // user tombstone, fails when already done
-    let sql_tombstone = "INSERT INTO deleted_user (`user`,`time`) VALUES (?,?)";
+    let sql_tombstone = "INSERT INTO deleted_user (`user`,created) VALUES (?,?)";
     let res = sqlx::query(sql_tombstone).bind(&user.0).bind(t_now).execute(&mut transaction).await?;
     trace!(affected=res.rows_affected(),"creating deleted_user entry");
     // shared lists tombstones
-    let sql_lists_shared = "INSERT INTO deleted_list_shared (user,list,`time`)
+    let sql_lists_shared = "INSERT INTO deleted_list_shared (user,list,created)
     SELECT user,list,? FROM list_permissions lp
     JOIN lists l ON lp.list = l.uuid
     WHERE l.owner = ?";
@@ -125,4 +125,12 @@ async fn key_type_by_name(sql: &mut MySqlConnection, ktype: &KeyType) -> Result<
             res.last_insert_id().try_into().unwrap()
         }
     })
+}
+
+/// Update last seen since date
+pub async fn update_last_seen(sql: &mut MySqlConnection, user: &UserId, time: Timestamp) -> color_eyre::eyre::Result<()> {
+    sqlx::query("UPDATE users SET last_seen = ? WHERE uuid = ?")
+        .bind(time).bind(user.0)
+        .execute(sql).await.context("updating last seen time")?;
+    Ok(())
 }

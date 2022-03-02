@@ -9,6 +9,7 @@ pub use uuid::Uuid;
 pub use color_eyre::eyre::Context;
 pub use serde::{Deserialize, Serialize};
 pub use crate::state::AppState;
+pub use crate::users::update_last_seen;
 
 /// Check query result for duplicate-entry error. Returns true if found.
 pub fn check_duplicate(res: std::result::Result<sqlx::mysql::MySqlQueryResult, sqlx::Error>) -> std::result::Result<bool,sqlx::Error> {
@@ -31,10 +32,13 @@ pub struct ErrorResponse {
 }
 
 #[cfg_attr(test, derive(Clone, PartialEq))]
+#[repr(transparent)]
 pub struct ListId(pub Uuid);
 #[cfg_attr(test, derive(Clone, PartialEq))]
+#[repr(transparent)]
 pub struct EntryId(pub Uuid);
 #[cfg_attr(test, derive(Clone, PartialEq))]
+#[repr(transparent)]
 pub struct UserId(pub Uuid);
 
 impl fmt::Display for ListId {
@@ -206,9 +210,9 @@ pub mod tests {
     }
 
     /// Generate user and register
-    pub async fn register_test_user(conn: &mut DbConn, rng: &mut ThreadRng) -> Uuid {
+    pub async fn register_test_user(conn: &mut DbConn, rng: &mut ThreadRng) -> UserId {
         let(claims,key,key_type) = gen_user();
-        crate::users::dao::register_user(conn,&claims,&key,key_type.clone()).await.unwrap();
-        claims.iss
+        let id = crate::users::dao::register_user(conn,&claims,&key,key_type.clone()).await.unwrap();
+        UserId(id)
     }
 }

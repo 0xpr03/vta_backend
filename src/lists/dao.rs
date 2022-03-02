@@ -242,7 +242,7 @@ async fn _delete_list(transaction: &mut Transaction<'_, MySql>, user: &UserId, l
 
     let t_now = Utc::now().naive_utc();
 
-    let sql_tombstone = "INSERT INTO deleted_list (user,list,`time`) VALUES (?,?,?)";
+    let sql_tombstone = "INSERT INTO deleted_list (user,list,created) VALUES (?,?,?)";
     sqlx::query(sql_tombstone).bind(user.0).bind(list.0).bind(t_now)
         .execute(&mut *transaction)
         .await.context("inserting list tombstone")?;
@@ -367,7 +367,7 @@ async fn _delete_entry(transaction: &mut Transaction<'_, MySql>, user: &UserId, 
         return Err(ListError::ListPermission);
     }
 
-    let sql_tombstone = "INSERT INTO deleted_entry (list,`entry`,`time`) VALUES (?,?,?)";
+    let sql_tombstone = "INSERT INTO deleted_entry (list,`entry`,created) VALUES (?,?,?)";
     sqlx::query(sql_tombstone).bind(list.0).bind(entry.0).bind(t_now)
         .execute(&mut *transaction)
         .await.context("inserting list tombstone")?;
