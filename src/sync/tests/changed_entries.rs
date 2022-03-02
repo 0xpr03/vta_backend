@@ -22,8 +22,6 @@ async fn test_basic_changed_entries() {
     insert_list(&mut conn, &user, &list2).await;
 
     // insert some entries
-    let time1 = Utc::now().naive_utc();
-
     let entries1: Vec<_> = (0..10)
         .into_iter()
         .map(|_| gen_entry(&list1.uuid, None))
@@ -39,7 +37,7 @@ async fn test_basic_changed_entries() {
         .map(|v| v.clone())
         .collect();
     let data = EntryChangedRequest {
-        since: Some(time1),
+        since: None,
         entries,
     };
 
@@ -50,6 +48,7 @@ async fn test_basic_changed_entries() {
     assert_eq!(resp.invalid.len(), 0);
     assert_eq!(resp.delta.len(), 0);
     // read them back
+    let time1 = resp.time;
     let resp = dao::update_changed_entries(
         &mut conn,
         EntryChangedRequest {
@@ -108,8 +107,8 @@ async fn test_basic_changed_entries() {
     assert_eq!(resp.invalid.len(), 0);
     assert_eq!(resp.delta.len(), 0);
 
-    // wait for 1 second to wait for the changes to settle
-    //thread::sleep(std::time::Duration::from_secs(1));
+    // wait for 1 second, shouldn't change anything due to passed time
+    thread::sleep(std::time::Duration::from_secs(1));
     //let time2 = time1 + Duration::seconds(1);
     dbg!(time1);
 
@@ -203,11 +202,7 @@ async fn test_basic_changed_entries_shared() {
     insert_list_perm(&mut conn, &user, &list3.uuid, true, true).await;
 
     // insert some entries
-    //let client1 = Uuid::new_v4();
-
     sleep(std::time::Duration::from_secs(1)).await;
-    let time1 = Utc::now().naive_utc();
-    dbg!(time1);
 
     // own list
     let e_l1 = gen_entry(&list1.uuid, None);
@@ -232,6 +227,7 @@ async fn test_basic_changed_entries_shared() {
     assert_eq!(resp.invalid.len(), 2);
     assert_eq!(resp.delta.len(), 0);
     // read them back
+    let time1 = resp.time;
     let resp = dao::update_changed_entries(
         &mut conn,
         EntryChangedRequest {

@@ -19,13 +19,12 @@ async fn test_basic_changed_lists() {
         lists: vec![gen_list(None), gen_list(None)],
     };
 
-    let time1 = Utc::now().naive_utc();
-
     let res = dao::update_changed_lists(&mut conn, change_req.clone(), &user)
         .await
         .unwrap();
     assert_eq!(0, res.delta.len());
     assert_eq!(0, res.failures.len());
+    let time1 = res.time;
     let change_empty_d = ListChangedRequest {
         since: Some(time1),
         lists: vec![],

@@ -16,6 +16,8 @@ pub struct ListDeletedRequest {
 /// Server response to client for list delete sync
 #[derive(Debug, Serialize)]
 pub struct ListDeletedResponse {
+    /// Time to request next delta for
+    pub time: Timestamp,
     /// Delta of deleted lists for the client to store
     pub delta: HashSet<Uuid>,
     /// Lists that the server didn't know, thus no tombstone stored
@@ -122,8 +124,12 @@ impl sqlx::FromRow<'_, sqlx::mysql::MySqlRow> for ListChangedEntrySend {
 
 #[derive(Debug, Serialize)]
 pub struct ListChangedResponse {
+    /// Delta of changed lists
     pub delta: HashMap<Uuid, ListChangedEntrySend>,
+    /// Failure in sent data
     pub failures: Vec<EntrySyncFailure>,
+    /// Time to request next delta for
+    pub time: Timestamp,
 }
 
 #[derive(Debug, Serialize)]
@@ -158,9 +164,14 @@ impl Eq for EntryDeleteEntry {}
 
 #[derive(Debug, Serialize)]
 pub struct EntryDeletedResponse {
+    /// Delta of deleted entries
     pub delta: HashMap<Uuid, EntryDeleteEntry>,
+    /// Ignored deletions of sent data
     pub ignored: Vec<Uuid>,
+    /// Invalid deletions of sent data
     pub invalid: Vec<Uuid>,
+    /// Time to request next delta for
+    pub time: Timestamp,
 }
 
 #[derive(Debug, Deserialize)]
@@ -221,7 +232,12 @@ pub struct Meaning {
 
 #[derive(Debug, Serialize)]
 pub struct EntryChangedResponse {
+    /// Delta of changed entries
     pub delta: HashMap<Uuid, EntryChangedEntry>,
+    /// Ignored entries of sent data
     pub ignored: Vec<Uuid>,
+    /// Invalid entries of sent data
     pub invalid: Vec<Uuid>,
+    /// Time to request next delta for
+    pub time: Timestamp,
 }

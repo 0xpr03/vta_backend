@@ -43,7 +43,6 @@ async fn test_basic_deleted_lists() {
     // allow read on last list
     insert_list_perm(&mut conn, &user, &list3.uuid, false, true).await;
     // delete request
-    let mut rng = rand::thread_rng();
     let v = EntryDeletedRequest {
         since: None,
         entries: vec![

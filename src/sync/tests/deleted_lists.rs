@@ -71,12 +71,12 @@ async fn test_deleted_lists() {
         .unwrap();
     assert_eq!(2, res.delta.len());
     // valid entry
-    let first = res
+    res
         .delta
         .get(&del_req.lists[1])
         .expect("expected valid list in delta not found");
     // valid entry
-    let second = res
+    res
         .delta
         .get(&del_req.lists[2])
         .expect("expected valid list in delta not found");
@@ -97,7 +97,7 @@ async fn test_deleted_lists() {
     assert_eq!(1, res.delta.len());
     assert_eq!(0, res.unowned.len());
     assert_eq!(0, res.unknown.len());
-    let item = res
+    res
         .delta
         .get(&lists[0].uuid)
         .expect("expected list from delta not found");

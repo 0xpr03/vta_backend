@@ -11,17 +11,30 @@ use super::models::*;
 use super::*;
 use crate::prelude::*;
 
-//#[instrument(skip(state,data))]
 pub async fn update_deleted_lists(
     sql: &mut DbConn,
     data: ListDeletedRequest,
     user: &UserId,
 ) -> Result<ListDeletedResponse> {
+    let mut transaction = sql.begin().await?;
+    let res = _update_deleted_lists(&mut transaction, data, user).await;
+    if res.is_ok() {
+        transaction.commit().await?;
+    } else {
+        transaction.rollback().await?;
+    }
+    res
+}
+
+//#[instrument(skip(state,data))]
+async fn _update_deleted_lists(
+    transaction: &mut Transaction<'_, MySql>,
+    data: ListDeletedRequest,
+    user: &UserId,
+) -> Result<ListDeletedResponse> {
     let t_now = Utc::now().naive_utc();
 
-    let mut transaction = sql.begin().await?;
-
-    update_last_seen(&mut transaction, user, t_now).await?;
+    update_last_seen(&mut *transaction, user, t_now).await?;
 
     let since = data.since.map(|v| v.with_nanosecond(0));
 
@@ -46,7 +59,7 @@ pub async fn update_deleted_lists(
         }
         None => sql_t.bind(user.0).bind(user.0),
     }
-    .fetch(&mut transaction);
+    .fetch(&mut *transaction);
 
     let mut return_lists: HashSet<Uuid> = stream
         .try_collect()
@@ -65,7 +78,7 @@ pub async fn update_deleted_lists(
         if !return_lists.remove(&v) {
             let owner = sqlx::query_as::<_, (Uuid,)>("SELECT owner FROM lists WHERE uuid = ?")
                 .bind(v)
-                .fetch_optional(&mut transaction)
+                .fetch_optional(&mut *transaction)
                 .await
                 .context("retrieving owner of lists")?;
             if let Some((owner,)) = owner {
@@ -88,7 +101,7 @@ pub async fn update_deleted_lists(
             .bind(user.0)
             .bind(v)
             .bind(t_now)
-            .execute(&mut transaction)
+            .execute(&mut *transaction)
             .await
             .context("inserting deleted_list")?;
     }
@@ -100,7 +113,7 @@ pub async fn update_deleted_lists(
         )
         .bind(t_now)
         .bind(v)
-        .execute(&mut transaction)
+        .execute(&mut *transaction)
         .await
         .context("inserting deleted_list_shared")?;
     }
@@ -109,28 +122,41 @@ pub async fn update_deleted_lists(
         sqlx::query("DELETE FROM lists WHERE owner = ? AND uuid = ?")
             .bind(user.0)
             .bind(v)
-            .execute(&mut transaction)
+            .execute(&mut *transaction)
             .await
             .context("deleting lists")?;
     }
-
-    transaction.commit().await?;
 
     Ok(ListDeletedResponse {
         delta: return_lists,
         unowned,
         unknown,
+        time: t_now,
     })
 }
 
-//#[instrument(skip(state,data))]
 pub async fn update_changed_lists(
     sql: &mut MySqlConnection,
     data: ListChangedRequest,
     user: &UserId,
 ) -> Result<ListChangedResponse> {
-    let t_now = Utc::now().naive_utc();
     let mut transaction = sql.begin().await?;
+    let res = _update_changed_lists(&mut transaction, data, user).await;
+    if res.is_ok() {
+        transaction.commit().await?;
+    } else {
+        transaction.rollback().await?;
+    }
+    res
+}
+
+//#[instrument(skip(state,data))]
+async fn _update_changed_lists(
+    transaction: &mut Transaction<'_, MySql>,
+    data: ListChangedRequest,
+    user: &UserId,
+) -> Result<ListChangedResponse> {
+    let t_now = Utc::now().naive_utc();
     let since = data.since.map(|v| v.with_nanosecond(0));
 
     // resolve all changed entries we should send back
@@ -166,7 +192,7 @@ pub async fn update_changed_lists(
             .bind(time),
         None => sql_t.bind(&user.0).bind(&user.0),
     }
-    .fetch(&mut transaction);
+    .fetch(&mut *transaction);
     let return_lists: HashMap<Uuid, ListChangedEntrySend> = stream
         .map_ok(|v| (v.uuid, v))
         .try_collect()
@@ -209,7 +235,7 @@ pub async fn update_changed_lists(
             .bind(&user.0)
             .bind(v.uuid)
             .bind(&user.0)
-            .fetch_optional(&mut transaction)
+            .fetch_optional(&mut *transaction)
             .await
             .context("checking tombstones")?;
         if res.is_some() {
@@ -218,7 +244,7 @@ pub async fn update_changed_lists(
         }
         let res = sqlx::query_as::<_, (Uuid, Timestamp)>(sql_owner_changed)
             .bind(v.uuid)
-            .fetch_optional(&mut transaction)
+            .fetch_optional(&mut *transaction)
             .await
             .context("fetching owner + changed")?;
         if let Some((owner, changed)) = res {
@@ -227,7 +253,7 @@ pub async fn update_changed_lists(
                 let change_perm = sqlx::query_scalar(sql_foreign_perm)
                     .bind(v.uuid)
                     .bind(&user.0)
-                    .fetch_optional(&mut transaction)
+                    .fetch_optional(&mut *transaction)
                     .await
                     .context("fetching foreign perms")?;
                 if change_perm != Some(true) {
@@ -253,7 +279,7 @@ pub async fn update_changed_lists(
                 .bind(v.name_b)
                 .bind(v.changed)
                 .bind(v.uuid)
-                .execute(&mut transaction)
+                .execute(&mut *transaction)
                 .await
                 .context("updating list")?;
 
@@ -268,7 +294,7 @@ pub async fn update_changed_lists(
                 .bind(&v.changed)
                 .bind(v.created)
                 .bind(&user.0)
-                .execute(&mut transaction)
+                .execute(&mut *transaction)
                 .await
                 .context("inserting list")?;
             inserted += 1;
@@ -282,8 +308,6 @@ pub async fn update_changed_lists(
         "filtered deleted"
     );
 
-    transaction.commit().await?;
-
     trace!(
         "Found {} changes to send back, failures {}",
         return_lists.len(),
@@ -292,20 +316,34 @@ pub async fn update_changed_lists(
     let response = ListChangedResponse {
         delta: return_lists,
         failures: failure,
+        time: t_now,
     };
 
     Ok(response)
 }
 
-//#[instrument(skip(state,data))]
 pub async fn update_deleted_entries(
     sql: &mut MySqlConnection,
     data: EntryDeletedRequest,
     user: &UserId,
 ) -> Result<EntryDeletedResponse> {
-    let t_now = Utc::now().naive_utc();
-
     let mut transaction = sql.begin().await?;
+    let res = _update_deleted_entries(&mut transaction, data, user).await;
+    if res.is_ok() {
+        transaction.commit().await?;
+    } else {
+        transaction.rollback().await?;
+    }
+    res
+}
+
+//#[instrument(skip(state,data))]
+async fn _update_deleted_entries(
+    transaction: &mut Transaction<'_, MySql>,
+    data: EntryDeletedRequest,
+    user: &UserId,
+) -> Result<EntryDeletedResponse> {
+    let t_now = Utc::now().naive_utc();
     let since = data.since.map(|v| v.with_nanosecond(0));
 
     // first retrieve deleted entries to send back
@@ -330,7 +368,7 @@ pub async fn update_deleted_entries(
         Some(time) => q.bind(user.0).bind(time).bind(user.0).bind(time),
         None => q.bind(user.0).bind(user.0),
     }
-    .fetch(&mut transaction);
+    .fetch(&mut *transaction);
 
     let mut return_delta: HashMap<Uuid, EntryDeleteEntry> = stream
         .map_ok(|v| (v.entry, v))
@@ -362,7 +400,7 @@ pub async fn update_deleted_entries(
         }
         let res = sqlx::query(sqlt_deleted_list)
             .bind(e.list)
-            .fetch_optional(&mut transaction)
+            .fetch_optional(&mut *transaction)
             .await
             .context("fetching list deletion")?;
         if res.is_some() {
@@ -384,7 +422,7 @@ pub async fn update_deleted_entries(
         } else {
             let res: Option<Uuid> = sqlx::query_scalar(sqlt_owner)
                 .bind(e.list)
-                .fetch_optional(&mut transaction)
+                .fetch_optional(&mut *transaction)
                 .await
                 .context("fetching list owner")?;
             if let Some(owner) = res {
@@ -393,7 +431,7 @@ pub async fn update_deleted_entries(
                     let res: Option<bool> = sqlx::query_scalar(sqlt_perms_shared)
                         .bind(e.list)
                         .bind(user.0)
-                        .fetch_optional(&mut transaction)
+                        .fetch_optional(&mut *transaction)
                         .await
                         .context("fetching shared write perms")?;
                     let has_perms = res == Some(true);
@@ -413,7 +451,7 @@ pub async fn update_deleted_entries(
         // delete entry
         let res = sqlx::query(sqlt_delete_entry)
             .bind(e.entry)
-            .execute(&mut transaction)
+            .execute(&mut *transaction)
             .await
             .context("deleting entry")?;
         if res.rows_affected() != 0 {
@@ -422,7 +460,7 @@ pub async fn update_deleted_entries(
                 .bind(e.list)
                 .bind(e.entry)
                 .bind(t_now)
-                .execute(&mut transaction)
+                .execute(&mut *transaction)
                 .await
                 .context("inserting tombstone")?;
         } else {
@@ -430,12 +468,11 @@ pub async fn update_deleted_entries(
         }
     }
 
-    transaction.commit().await?;
-
     Ok(EntryDeletedResponse {
         delta: return_delta,
         ignored,
         invalid,
+        time: t_now,
     })
 }
 
@@ -647,5 +684,6 @@ async fn _update_changed_entries(
         delta: return_entries,
         ignored,
         invalid,
+        time: t_now,
     })
 }
