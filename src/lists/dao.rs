@@ -15,7 +15,6 @@ use subtle::ConstantTimeEq;
 
 use super::models::*;
 use super::*;
-use crate::prelude::*;
 
 // #[instrument(skip(state,data))]
 pub async fn all_lists(sql: &mut MySqlConnection, user: &UserId) -> Result<HashMap<Uuid, List>> {

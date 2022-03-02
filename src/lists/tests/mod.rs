@@ -7,7 +7,6 @@ use sqlx::MySqlConnection;
 use super::models::*;
 use super::*;
 use crate::prelude::tests::*;
-use crate::prelude::*;
 
 mod list_basics;
 mod sharing;

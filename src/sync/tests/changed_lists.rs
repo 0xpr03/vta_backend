@@ -1,8 +1,6 @@
 use actix_rt::time::sleep;
 
 use super::*;
-use crate::prelude::tests::*;
-use crate::prelude::*;
 
 #[actix_rt::test]
 async fn test_basic_changed_lists() {

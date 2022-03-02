@@ -1,15 +1,11 @@
 use chrono::{Timelike, Utc};
 use futures::TryStreamExt;
-use rand::distributions::Alphanumeric;
-use rand::Rng;
-use sqlx::{Connection, Executor, MySql, MySqlConnection, Transaction};
+use sqlx::{Connection, MySql, MySqlConnection, Transaction};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
-use std::iter::repeat;
 
 use super::models::*;
 use super::*;
-use crate::prelude::*;
 
 pub async fn update_deleted_lists(
     sql: &mut DbConn,

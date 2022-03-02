@@ -1,4 +1,4 @@
-use std::{fmt, ops::Deref};
+use std::fmt;
 
 use chrono::NaiveDateTime;
 
@@ -203,11 +203,10 @@ pub mod tests {
     }
 
     /// Generates user claims,key,key_type for register_user
-    pub fn gen_user() -> (RegisterClaims, Vec<u8>, KeyType) {
-        let mut rng = rand::thread_rng();
+    pub fn gen_user(rng: &mut ThreadRng) -> (RegisterClaims, Vec<u8>, KeyType) {
         let claims = RegisterClaims {
             iss: Uuid::new_v4(),
-            name: random_string(&mut rng, 7),
+            name: random_string(&mut *rng, 7),
             delete_after: Some(3600),
         };
         let key: Vec<u8> = rng.sample_iter(Standard).take(16).collect();
@@ -242,7 +241,7 @@ pub mod tests {
 
     /// Generate user and register
     pub async fn register_test_user(conn: &mut DbConn, rng: &mut ThreadRng) -> UserId {
-        let (claims, key, key_type) = gen_user();
+        let (claims, key, key_type) = gen_user(rng);
         let id = crate::users::dao::register_user(conn, &claims, &key, key_type.clone())
             .await
             .unwrap();

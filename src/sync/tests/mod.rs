@@ -1,10 +1,9 @@
-use chrono::{Duration, NaiveDateTime, Utc};
+use chrono::{NaiveDateTime, Utc};
 use rand::Rng;
 
 use super::models::*;
 use super::*;
 use crate::prelude::tests::*;
-use crate::prelude::*;
 
 mod changed_entries;
 mod changed_lists;

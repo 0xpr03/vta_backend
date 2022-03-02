@@ -1,9 +1,6 @@
 use actix_rt::time::sleep;
-use chrono::Duration;
 
 use super::*;
-use crate::prelude::tests::*;
-use crate::prelude::*;
 
 #[actix_rt::test]
 async fn test_deleted_lists() {
@@ -71,13 +68,11 @@ async fn test_deleted_lists() {
         .unwrap();
     assert_eq!(2, res.delta.len());
     // valid entry
-    res
-        .delta
+    res.delta
         .get(&del_req.lists[1])
         .expect("expected valid list in delta not found");
     // valid entry
-    res
-        .delta
+    res.delta
         .get(&del_req.lists[2])
         .expect("expected valid list in delta not found");
 
@@ -97,8 +92,7 @@ async fn test_deleted_lists() {
     assert_eq!(1, res.delta.len());
     assert_eq!(0, res.unowned.len());
     assert_eq!(0, res.unknown.len());
-    res
-        .delta
+    res.delta
         .get(&lists[0].uuid)
         .expect("expected list from delta not found");
 

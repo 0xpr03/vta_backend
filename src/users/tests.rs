@@ -4,7 +4,6 @@ use crate::prelude::tests::*;
 use crate::prelude::*;
 use chrono::Duration;
 use chrono::Utc;
-use sqlx::Executor;
 
 /// Verify key register, retrieval and user info
 #[actix_rt::test]
@@ -12,14 +11,15 @@ async fn test_register() {
     let db = DatabaseGuard::new().await;
     let mut conn = &mut *db.conn().await;
 
-    let (claims, key, key_type) = gen_user();
+    let mut rng = rand::thread_rng();
+    let (claims, key, key_type) = gen_user(&mut rng);
     let t_now = Utc::now().naive_utc();
     dao::register_user(&mut conn, &claims, &key, key_type.clone())
         .await
         .unwrap();
 
     // now try to re-register
-    let (mut claims_new, new_key, _) = gen_user();
+    let (mut claims_new, new_key, _) = gen_user(&mut rng);
     claims_new.iss = claims.iss.clone();
     let res = dao::register_user(&mut conn, &claims, &new_key, key_type.clone()).await;
     match res {
@@ -49,7 +49,8 @@ async fn test_password_login() {
     let db = DatabaseGuard::new().await;
     let mut conn = &mut *db.conn().await;
 
-    let (claims, key, key_type) = gen_user();
+    let mut rng = rand::thread_rng();
+    let (claims, key, key_type) = gen_user(&mut rng);
     let user_id = UserId(claims.iss);
     dao::register_user(&mut conn, &claims, &key, key_type.clone())
         .await
@@ -94,7 +95,7 @@ async fn test_user_delete() {
     let db = DatabaseGuard::new().await;
     let mut conn = &mut *db.conn().await;
 
-    let (claims, key, key_type) = gen_user();
+    let (claims, key, key_type) = gen_user(&mut rand::thread_rng());
     let user = UserId(claims.iss);
     dao::register_user(&mut conn, &claims, &key, key_type.clone())
         .await
@@ -126,7 +127,7 @@ async fn test_last_seen() {
     let db = DatabaseGuard::new().await;
     let mut conn = &mut *db.conn().await;
 
-    let (claims, key, key_type) = gen_user();
+    let (claims, key, key_type) = gen_user(&mut rand::thread_rng());
     let user = UserId(claims.iss);
     dao::register_user(&mut conn, &claims, &key, key_type.clone())
         .await

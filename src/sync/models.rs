@@ -1,7 +1,6 @@
 use sqlx::Row;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
-use std::convert::TryFrom;
 use std::hash::{Hash, Hasher};
 
 use super::InvalidPermissionError;

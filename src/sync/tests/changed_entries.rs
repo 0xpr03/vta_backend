@@ -4,8 +4,6 @@ use actix_rt::time::sleep;
 use chrono::Duration;
 
 use super::*;
-use crate::prelude::tests::*;
-use crate::prelude::*;
 
 #[test_log::test(actix_rt::test)]
 async fn test_basic_changed_entries() {
