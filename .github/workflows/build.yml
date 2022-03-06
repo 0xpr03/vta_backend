@@ -35,7 +35,7 @@ jobs:
           default: true
           override: true
       - name: install mariadb lib
-        run: sudo apt-get install -y libmariadb-dev
+        run: sudo apt-get update && sudo apt-get install -y libmariadb-dev
       - name: setup python
         uses: py-actions/py-dependency-install@v2
         with:
