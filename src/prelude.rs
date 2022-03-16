@@ -140,7 +140,7 @@ pub mod tests {
             let opts = MySqlPoolOptions::new().after_connect(move|conn| {
                 let c = conn_db_switch.clone();
                 Box::pin(async move {
-                conn.execute("SET SESSION sql_mode=STRICT_ALL_TABLES; SET SESSION innodb_strict_mode=ON;").await.unwrap();
+                conn.execute(crate::SQL_CONNECT_COMMANDS).await.unwrap();
                 conn.execute(c.as_str()).await.unwrap();
                 Ok(())
             })});

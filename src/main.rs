@@ -28,6 +28,7 @@ const SESSION_KEY: &str = "session_key";
 const SECURE_COOKIE: bool = false;
 #[cfg(not(debug_assertions))]
 const SECURE_COOKIE: bool = true;
+const SQL_CONNECT_COMMANDS: &str = "SET SESSION sql_mode=STRICT_ALL_TABLES; SET SESSION innodb_strict_mode=ON; SET SESSION time_zone = \"+00:00\";";
 
 fn init_telemetry() {
     let app_name = env!("CARGO_BIN_NAME");
@@ -107,7 +108,7 @@ async fn main_() -> Result<()> {
         .after_connect(|conn| {
             Box::pin(async move {
                 conn.execute(
-                    "SET SESSION sql_mode=STRICT_ALL_TABLES; SET SESSION innodb_strict_mode=ON;",
+                    SQL_CONNECT_COMMANDS,
                 )
                 .await?;
                 Ok(())
