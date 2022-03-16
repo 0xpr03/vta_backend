@@ -72,12 +72,12 @@ async fn _update_deleted_lists(
     for v in data.lists.into_iter() {
         // don't process deletions we already know
         if !return_lists.remove(&v) {
-            let owner = sqlx::query_as::<_, (Uuid,)>("SELECT owner FROM lists WHERE uuid = ?")
+            let owner = sqlx::query_scalar::<_, Uuid>("SELECT owner FROM lists WHERE uuid = ?")
                 .bind(v)
                 .fetch_optional(&mut *transaction)
                 .await
                 .context("retrieving owner of lists")?;
-            if let Some((owner,)) = owner {
+            if let Some(owner) = owner {
                 // only owners can delete lists
                 if owner == user.0 {
                     filtered.push(v);

@@ -566,15 +566,12 @@ pub enum Permission {
 
 async fn list_of_entry(sql: &mut MySqlConnection, entry: &EntryId) -> Result<ListId> {
     let sql_fetch = "SELECT list FROM entries WHERE uuid = ?";
-    let list = match sqlx::query_as::<_, (Uuid,)>(sql_fetch)
+    let list = sqlx::query_scalar::<_, Uuid>(sql_fetch)
         .bind(entry.0)
         .fetch_optional(&mut *sql)
         .await
         .context("selecting list of entry")?
-    {
-        Some((u,)) => u,
-        None => return Err(ListError::ListNotFound),
-    };
+        .ok_or(ListError::ListNotFound)?;
     Ok(ListId(list))
 }
 
@@ -587,15 +584,12 @@ pub async fn has_list_perm(
     perm: Permission,
 ) -> Result<bool> {
     let sql_owner = "SELECT owner FROM lists WHERE uuid = ?";
-    let owner = match sqlx::query_as::<_, (Uuid,)>(sql_owner)
+    let owner = sqlx::query_scalar::<_, Uuid>(sql_owner)
         .bind(list.0)
         .fetch_optional(&mut *sql)
         .await
         .context("testing list owner")?
-    {
-        Some((u,)) => u,
-        None => return Err(ListError::ListNotFound),
-    };
+        .ok_or(ListError::ListNotFound)?;
     let is_owner = owner == user.0;
     if perm == Permission::OWNER {
         return Ok(is_owner);
@@ -613,13 +607,13 @@ pub async fn has_list_perm(
     } else {
         "SELECT reshare FROM list_permissions WHERE list = ? AND user = ?"
     };
-    let perm = sqlx::query_as::<_, (bool,)>(sql_foreign)
+    let perm = sqlx::query_scalar::<_, bool>(sql_foreign)
         .bind(list.0)
         .bind(user.0)
         .fetch_optional(sql)
         .await
         .context("testing shared list perm")?
-        .map_or(false, |(v,)| v);
+        .unwrap_or(false);
 
     Ok(perm)
 }

@@ -151,7 +151,7 @@ pub mod tests {
 
             let conn = &mut *db_pool.begin().await.unwrap();
 
-            let res = sqlx::query_as::<_, (String,)>("SELECT DATABASE() FROM DUAL")
+            let res = sqlx::query_scalar::<_, String>("SELECT DATABASE() FROM DUAL")
                 .fetch_optional(&mut *conn)
                 .await
                 .unwrap();

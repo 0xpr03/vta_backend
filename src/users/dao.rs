@@ -58,7 +58,7 @@ pub async fn user_key(sql: &mut MySqlConnection, user: &UserId) -> Result<Option
     .await
     .context("retrieving user key")?
     {
-        let (name,) = sqlx::query_as::<_, (String,)>("SELECT name FROM key_type WHERE id = ?")
+        let name = sqlx::query_scalar::<_, String>("SELECT name FROM key_type WHERE id = ?")
             .bind(raw.key_type)
             .fetch_one(&mut *sql)
             .await
@@ -75,7 +75,7 @@ pub async fn user_key(sql: &mut MySqlConnection, user: &UserId) -> Result<Option
 
 /// Returns true if user got deleted
 pub async fn user_deleted(sql: &mut MySqlConnection, user: &UserId) -> Result<bool> {
-    let res = sqlx::query_as::<_, (bool,)>("SELECT 1 FROM deleted_user WHERE user = ?")
+    let res = sqlx::query_scalar::<_, bool>("SELECT 1 FROM deleted_user WHERE user = ?")
         .bind(user.0)
         .fetch_optional(sql)
         .await?;
@@ -130,7 +130,7 @@ pub async fn delete_user(sql: &mut MySqlConnection, user: &UserId) -> Result<()>
     let mut transaction = sql.begin().await?;
 
     // check if user exists
-    if sqlx::query_as::<_, (bool,)>("SELECT 1 from users WHERE uuid = ?")
+    if sqlx::query_scalar::<_, bool>("SELECT 1 from users WHERE uuid = ?")
         .bind(user.0)
         .fetch_optional(&mut transaction)
         .await?
@@ -179,11 +179,10 @@ pub async fn delete_user(sql: &mut MySqlConnection, user: &UserId) -> Result<()>
 
 async fn key_type_by_name(sql: &mut MySqlConnection, ktype: &KeyType) -> Result<i32> {
     Ok(
-        match sqlx::query_as::<_, (i32,)>("SELECT id FROM key_type WHERE name = ?")
+        match sqlx::query_scalar::<_, i32>("SELECT id FROM key_type WHERE name = ?")
             .bind(ktype)
             .fetch_optional(&mut *sql)
             .await?
-            .map(|(i,)| i)
         {
             Some(id) => id,
             None => {
